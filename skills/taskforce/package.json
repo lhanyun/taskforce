@@ -1,0 +1,13 @@
+{
+  "name": "taskforce",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Taskforce runtime supervisor loop for multi-CLI coding agents (Node runtime).",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/taskforce_supervisor.test.mjs"
+  }
+}

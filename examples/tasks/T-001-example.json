@@ -1,0 +1,16 @@
+{
+  "id": "T-001-example",
+  "goal": "Make one small, bounded code change described by the user.",
+  "boundaries": [
+    "Keep this task narrow. If the work needs product or architecture decisions, route an advisory task first.",
+    "Must not touch files outside the allowed list."
+  ],
+  "validation": [
+    "Run the narrow test command for this change."
+  ],
+  "done_when": [
+    "Primary run evidence exists.",
+    "Patch touches only allowed files.",
+    "Validation result is recorded."
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "taskforce",
+  "version": "0.1.0",
+  "description": "Coordinate terminal-visible coding agents with small tasks, hard evidence, patch scope checks, and acceptance review.",
+  "author": {
+    "name": "Taskforce contributors"
+  },
+  "license": "MIT",
+  "keywords": ["agents", "coding", "orchestration", "terminal", "review"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Taskforce",
+    "shortDescription": "Multi-agent coding orchestration",
+    "longDescription": "Taskforce coordinates coding agents through small task files, role routing, hard run evidence, patch scope checks, and acceptance review.",
+    "developerName": "Taskforce contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Use Taskforce to split and delegate this coding goal.",
+      "Route this feature through Taskforce roles.",
+      "Review this Taskforce candidate patch."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Taskforce"
+  short_description: "Runtime supervision for coding agents"
+  default_prompt: "Use $taskforce to launch terminal-visible coding agents. Keep exactly one built-in --wait supervisor per workflow. Every 15-second screen read requires a fresh Chief decision; after deciding, immediately start the next wait and do not end while workflow_terminal is false. Continue is the default for active Thinking, Write/Edit, tests, and debugging; never send urgency or task-restatement prompts merely because work is slow or partial. Read each terminal tail from the bottom upward. For TUI menus, send one official key, then re-read and verify the highlight before sending enter; never type displayed option numbers unless explicitly documented as shortcuts. Never stop a normal wait, relaunch a live worker, or generate custom polling logic."

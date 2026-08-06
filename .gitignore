@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Project-local Taskforce runtime artifacts
+.taskforce/
+
+# Local scratch
+tmp/
+dist/
+build/
