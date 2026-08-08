@@ -21,7 +21,7 @@
     <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.025;0.035;0.90;1" dur="20s" repeatCount="indefinite"/>
       <rect x="28" y="56" width="4" height="14" rx="2" fill="#58a6ff"/>
       <text x="40" y="67" fill="#58a6ff" font-size="10" font-weight="700">TICK 1</text>
-      <text x="90" y="67" fill="#6e7681" font-size="10">node-opencode: 正在编写 Tank.ts</text>
+      <text x="90" y="67" fill="#6e7681" font-size="10">opencode: 正在编写 Tank.ts</text>
       <text x="40" y="80" fill="#3fb950" font-size="10">→ continue</text>
     </g>
 
@@ -29,7 +29,7 @@
     <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.225;0.235;0.90;1" dur="20s" repeatCount="indefinite"/>
       <rect x="28" y="92" width="4" height="14" rx="2" fill="#d29922"/>
       <text x="40" y="103" fill="#d29922" font-size="10" font-weight="700">TICK 4</text>
-      <text x="90" y="103" fill="#6e7681" font-size="10">node-opencode: ⚠ 权限菜单</text>
+      <text x="90" y="103" fill="#6e7681" font-size="10">opencode: ⚠ 权限菜单</text>
       <text x="40" y="116" fill="#58a6ff" font-size="10">→ send key:enter</text>
     </g>
 
@@ -37,7 +37,7 @@
     <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.425;0.435;0.90;1" dur="20s" repeatCount="indefinite"/>
       <rect x="28" y="128" width="4" height="14" rx="2" fill="#f85149"/>
       <text x="40" y="139" fill="#f85149" font-size="10" font-weight="700">TICK 8</text>
-      <text x="90" y="139" fill="#6e7681" font-size="10">node-opencode: 编写 Network.ts ← 偏离!</text>
+      <text x="90" y="139" fill="#6e7681" font-size="10">opencode: 编写 Network.ts ← 偏离!</text>
       <text x="40" y="152" fill="#58a6ff" font-size="10">→ send input "只实现单机版"</text>
     </g>
 
@@ -45,7 +45,7 @@
     <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.600;0.610;0.90;1" dur="20s" repeatCount="indefinite"/>
       <rect x="28" y="164" width="4" height="14" rx="2" fill="#3fb950"/>
       <text x="40" y="175" fill="#3fb950" font-size="10" font-weight="700">TICK 12</text>
-      <text x="100" y="175" fill="#6e7681" font-size="10">node-opencode: ✓ 全部测试通过</text>
+      <text x="100" y="175" fill="#6e7681" font-size="10">opencode: ✓ 全部测试通过</text>
       <text x="40" y="188" fill="#3fb950" font-size="10">→ complete</text>
     </g>
 
@@ -69,7 +69,7 @@
   <rect x="456" y="16" width="428" height="32" rx="10" fill="#21262d"/>
   <rect x="456" y="38" width="428" height="10" fill="#21262d"/>
   <circle cx="476" cy="32" r="5" fill="#ff5f57"/><circle cx="492" cy="32" r="5" fill="#febc2e"/><circle cx="508" cy="32" r="5" fill="#28c840"/>
-  <text x="670" y="37" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">node-opencode (opencode)</text>
+  <text x="670" y="37" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">opencode</text>
 
   <g clip-path="url(#cR)">
 
@@ -147,7 +147,7 @@
     <!-- ★ Complete marker (stays) -->
     <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.650;0.660;0.90;1" dur="20s" repeatCount="indefinite"/>
       <rect x="468" y="502" width="400" height="1" fill="#21262d"/>
-      <text x="472" y="520" fill="#3fb950" font-size="11" font-weight="700">✓ node-opencode 完成</text>
+      <text x="472" y="520" fill="#3fb950" font-size="11" font-weight="700">✓ opencode 完成</text>
       <text x="472" y="536" fill="#8b949e" font-size="10">Chief verified: complete — 目标达成，实现已验证</text>
     </g>
 

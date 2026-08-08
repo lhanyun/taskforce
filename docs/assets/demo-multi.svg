@@ -150,7 +150,7 @@
 
   <!-- Pending (stays until claude starts) -->
   <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.044;0.056;0.311;0.322;1" dur="30s" repeatCount="indefinite"/>
-    <text x="318" y="142" fill="#6e7681" font-size="9">○ 等待 node-codex 完成…</text>
+    <text x="318" y="142" fill="#6e7681" font-size="9">○ 等待 codex 完成…</text>
   </g>
 
   <!-- Prompt (stays) -->
@@ -221,7 +221,7 @@
 
   <!-- Pending (stays until opencode starts) -->
   <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.056;0.067;0.578;0.589;1" dur="30s" repeatCount="indefinite"/>
-    <text x="606" y="142" fill="#6e7681" font-size="9">○ 等待 node-claude 完成…</text>
+    <text x="606" y="142" fill="#6e7681" font-size="9">○ 等待 claude 完成…</text>
   </g>
 
   <!-- Prompt (stays) -->
