@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="'SF Mono','Fira Code','Cascadia Code',Menlo,monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <clipPath id="cL"><rect x="16" y="16" width="428" height="588" rx="10"/></clipPath>
+    <clipPath id="cR"><rect x="456" y="16" width="428" height="588" rx="10"/></clipPath>
+  </defs>
+
+  <!-- ============ LEFT: CHIEF ============ -->
+  <rect x="16" y="16" width="428" height="588" rx="10" fill="url(#bg)" stroke="#30363d" stroke-width="1"/>
+  <rect x="16" y="16" width="428" height="32" rx="10" fill="#21262d"/>
+  <rect x="16" y="38" width="428" height="10" fill="#21262d"/>
+  <circle cx="36" cy="32" r="5" fill="#ff5f57"/><circle cx="52" cy="32" r="5" fill="#febc2e"/><circle cx="68" cy="32" r="5" fill="#28c840"/>
+  <text x="230" y="37" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">chief — 监督器</text>
+
+  <g clip-path="url(#cL)">
+
+    <!-- TICK 1 -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.025;0.035;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="28" y="56" width="4" height="14" rx="2" fill="#58a6ff"/>
+      <text x="40" y="67" fill="#58a6ff" font-size="10" font-weight="700">TICK 1</text>
+      <text x="90" y="67" fill="#6e7681" font-size="10">node-opencode: 正在编写 Tank.ts</text>
+      <text x="40" y="80" fill="#3fb950" font-size="10">→ continue</text>
+    </g>
+
+    <!-- TICK 4 -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.225;0.235;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="28" y="92" width="4" height="14" rx="2" fill="#d29922"/>
+      <text x="40" y="103" fill="#d29922" font-size="10" font-weight="700">TICK 4</text>
+      <text x="90" y="103" fill="#6e7681" font-size="10">node-opencode: ⚠ 权限菜单</text>
+      <text x="40" y="116" fill="#58a6ff" font-size="10">→ send key:enter</text>
+    </g>
+
+    <!-- TICK 8 -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.425;0.435;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="28" y="128" width="4" height="14" rx="2" fill="#f85149"/>
+      <text x="40" y="139" fill="#f85149" font-size="10" font-weight="700">TICK 8</text>
+      <text x="90" y="139" fill="#6e7681" font-size="10">node-opencode: 编写 Network.ts ← 偏离!</text>
+      <text x="40" y="152" fill="#58a6ff" font-size="10">→ send input "只实现单机版"</text>
+    </g>
+
+    <!-- TICK 12 -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.600;0.610;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="28" y="164" width="4" height="14" rx="2" fill="#3fb950"/>
+      <text x="40" y="175" fill="#3fb950" font-size="10" font-weight="700">TICK 12</text>
+      <text x="100" y="175" fill="#6e7681" font-size="10">node-opencode: ✓ 全部测试通过</text>
+      <text x="40" y="188" fill="#3fb950" font-size="10">→ complete</text>
+    </g>
+
+    <!-- Timeline -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.025;0.035;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="28" y="210" width="404" height="1" fill="#21262d"/>
+      <text x="36" y="228" fill="#6e7681" font-size="9">追溯: 4 次观察 · 2 次 send · 1 次 complete</text>
+      <text x="36" y="244" fill="#6e7681" font-size="9">所有决策可追溯，所有观察可审计</text>
+    </g>
+
+    <!-- Status bar -->
+    <rect x="16" y="556" width="428" height="48" fill="#161b22"/>
+    <text x="36" y="578" fill="#3fb950" font-size="10" font-weight="600">● 1 running</text>
+    <text x="200" y="578" fill="#8b949e" font-size="10">completed: 0</text>
+    <text x="360" y="578" fill="#8b949e" font-size="10">pending: 1</text>
+    <text x="428" y="578" text-anchor="end" fill="#58a6ff" font-size="10" font-weight="600">Taskforce</text>
+  </g>
+
+  <!-- ============ RIGHT: WORKER ============ -->
+  <rect x="456" y="16" width="428" height="588" rx="10" fill="url(#bg)" stroke="#30363d" stroke-width="1"/>
+  <rect x="456" y="16" width="428" height="32" rx="10" fill="#21262d"/>
+  <rect x="456" y="38" width="428" height="10" fill="#21262d"/>
+  <circle cx="476" cy="32" r="5" fill="#ff5f57"/><circle cx="492" cy="32" r="5" fill="#febc2e"/><circle cx="508" cy="32" r="5" fill="#28c840"/>
+  <text x="670" y="37" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">node-opencode (opencode)</text>
+
+  <g clip-path="url(#cR)">
+
+    <!-- Prompt (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.050;0.060;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <text x="472" y="64" fill="#3fb950" font-size="11" font-weight="700">❯</text>
+      <text x="488" y="64" fill="#c9d1d9" font-size="11">开发一个坦克大战游戏，包含地图、敌人AI和计分系统</text>
+    </g>
+
+    <!-- File tree (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.075;0.085;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="76" width="400" height="1" fill="#21262d"/>
+      <text x="472" y="92" fill="#8b949e" font-size="10">src/game/</text>
+      <text x="472" y="106" fill="#58a6ff" font-size="10">  Tank.ts</text>
+      <text x="472" y="120" fill="#58a6ff" font-size="10">  EnemyAI.ts</text>
+    </g>
+
+    <!-- Code lines (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.100;0.110;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="130" width="400" height="1" fill="#21262d"/>
+      <text x="472" y="148" fill="#6e7681" font-size="10"> 1</text>
+      <text x="496" y="148" fill="#c9d1d9" font-size="10"><tspan fill="#ff7b72">export class</tspan> <tspan fill="#d2a8ff">Tank</tspan> <tspan fill="#c9d1d9">{</tspan></text>
+      <text x="472" y="162" fill="#6e7681" font-size="10"> 2</text>
+      <text x="496" y="162" fill="#c9d1d9" font-size="10">  <tspan fill="#ff7b72">constructor</tspan>(<tspan fill="#79c0ff">x</tspan>, <tspan fill="#79c0ff">y</tspan>) { <tspan fill="#ff7b72">this</tspan>.pos = {x, y} }</text>
+      <text x="472" y="176" fill="#6e7681" font-size="10"> 3</text>
+      <text x="496" y="176" fill="#c9d1d9" font-size="10">  <tspan fill="#d2a8ff">move</tspan>(dir) { … }</text>
+      <text x="472" y="190" fill="#6e7681" font-size="10"> 4</text>
+      <text x="496" y="190" fill="#c9d1d9" font-size="10">  <tspan fill="#d2a8ff">shoot</tspan>() { … }</text>
+      <text x="472" y="204" fill="#6e7681" font-size="10"> 5</text>
+      <text x="496" y="204" fill="#c9d1d9" font-size="10">  <tspan fill="#d2a8ff">render</tspan>(ctx) { … }</text>
+      <rect x="672" y="192" width="7" height="14" fill="#58a6ff" rx="1"><animate attributeName="opacity" values="1;1;0;0" dur="1s" repeatCount="indefinite"/></rect>
+    </g>
+
+    <!-- ★ Permission menu (stays, with approval result) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.175;0.185;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="218" width="400" height="1" fill="#21262d"/>
+      <rect x="468" y="222" width="400" height="82" rx="4" fill="#1c1c2e" stroke="#30363d" stroke-width="0.5"/>
+      <text x="484" y="240" fill="#d29922" font-size="10" font-weight="700">⚠ 权限请求</text>
+      <text x="484" y="256" fill="#c9d1d9" font-size="10">允许写入 src/game/Tank.ts？</text>
+      <text x="484" y="272" fill="#58a6ff" font-size="10">▸ 允许本项目所有写入操作</text>
+      <text x="484" y="288" fill="#8b949e" font-size="10">  拒绝，跳过此命令</text>
+    </g>
+    <!-- Approval result (appears after Chief approves, stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.300;0.310;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="222" width="400" height="82" rx="4" fill="#3fb950" opacity="0.08"/>
+      <text x="484" y="300" fill="#3fb950" font-size="10" font-weight="600">✓ 已批准 — Chief send key:enter</text>
+    </g>
+
+    <!-- ★ Drift correction (stays, with acknowledgment) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.375;0.385;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="312" width="400" height="1" fill="#21262d"/>
+      <rect x="468" y="316" width="400" height="36" rx="4" fill="#2d1b1b" stroke="#f85149" stroke-width="0.5"/>
+      <text x="484" y="332" fill="#f85149" font-size="10" font-weight="600">✉ Chief 纠偏 (send input)：</text>
+      <text x="484" y="348" fill="#c9d1d9" font-size="10">"只实现单机版，不需要网络多人模式"</text>
+    </g>
+    <!-- Acknowledgment (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.500;0.510;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <text x="472" y="366" fill="#3fb950" font-size="10">✓ 已理解 — 专注单机版实现</text>
+    </g>
+
+    <!-- ★ Test results (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.575;0.585;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="380" width="400" height="1" fill="#21262d"/>
+      <text x="472" y="398" fill="#3fb950" font-size="11" font-weight="700">❯</text>
+      <text x="488" y="398" fill="#8b949e" font-size="11">npm test</text>
+    </g>
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.600;0.610;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <text x="472" y="416" fill="#8b949e" font-size="10">PASS src/game/Tank.test.ts</text>
+      <text x="472" y="432" fill="#3fb950" font-size="10">  ✓ 坦克移动方向正确 (8ms)</text>
+      <text x="472" y="448" fill="#3fb950" font-size="10">  ✓ 射击生成子弹 (5ms)</text>
+      <text x="472" y="464" fill="#3fb950" font-size="10">  ✓ 敌人AI追踪玩家 (12ms)</text>
+      <text x="472" y="488" fill="#3fb950" font-size="11" font-weight="700">Tests: 3 passed, 3 total</text>
+    </g>
+
+    <!-- ★ Complete marker (stays) -->
+    <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.650;0.660;0.90;1" dur="20s" repeatCount="indefinite"/>
+      <rect x="468" y="502" width="400" height="1" fill="#21262d"/>
+      <text x="472" y="520" fill="#3fb950" font-size="11" font-weight="700">✓ node-opencode 完成</text>
+      <text x="472" y="536" fill="#8b949e" font-size="10">Chief verified: complete — 目标达成，实现已验证</text>
+    </g>
+
+    <!-- Status bar -->
+    <rect x="456" y="556" width="428" height="48" fill="#161b22"/>
+    <circle cx="472" cy="578" r="4" fill="#3fb950"/>
+    <text x="484" y="582" fill="#3fb950" font-size="10" font-weight="600">opencode</text>
+    <text x="860" y="582" text-anchor="end" fill="#8b949e" font-size="10">src/game/Tank.ts</text>
+  </g>
+
+  <!-- ============ CONNECTING ARROWS ============ -->
+  <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.275;0.280;0.305;0.315;1" dur="20s" repeatCount="indefinite"/>
+    <path d="M 432 103 L 456 103" stroke="#58a6ff" stroke-width="3" fill="none"/>
+    <polygon points="452,97 462,103 452,109" fill="#58a6ff"/>
+  </g>
+  <g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.475;0.480;0.505;0.515;1" dur="20s" repeatCount="indefinite"/>
+    <path d="M 432 139 L 456 139" stroke="#f85149" stroke-width="3" fill="none"/>
+    <polygon points="452,133 462,139 452,145" fill="#f85149"/>
+  </g>
+
+  <text x="448" y="10" text-anchor="middle" fill="#484f58" font-size="9" font-weight="600">监督器 ⟷ 工作器 (同一节点)</text>
+
+  <rect x="16" y="612" width="868" height="3" rx="1.5" fill="#21262d"/>
+  <rect x="16" y="612" width="0" height="3" rx="1.5" fill="#58a6ff">
+    <animate attributeName="width" from="0" to="868" dur="20s" repeatCount="indefinite"/>
+  </rect>
+</svg>

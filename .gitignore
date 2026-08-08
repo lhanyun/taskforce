@@ -6,6 +6,10 @@ __pycache__/
 # Project-local Taskforce runtime artifacts
 .taskforce/
 
+# Internal design specs and implementation plans (not for public release)
+specs/
+docs/superpowers/
+
 # Local scratch
 tmp/
 dist/
