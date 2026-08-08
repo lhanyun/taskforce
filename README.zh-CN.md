@@ -22,7 +22,7 @@
 
 <img src="docs/assets/demo.svg" alt="单节点演示" width="880">
 
-*同一个节点 (node-opencode) 在 4 个 tick 中的不同状态——编码、权限菜单、
+*单个 CLI (opencode) 在 4 个 tick 中的不同状态——编码、权限菜单、
 偏离目标、验证完成。Chief 对每个观察做出独立决策。*
 
 告诉你的 coding CLI：
@@ -54,7 +54,7 @@
 修正发现的问题。持续监督整个工作流。
 ```
 
-| Tick | node-codex | node-claude | node-opencode |
+| Tick | codex | claude | opencode |
 |---|---|---|---|
 | TICK 3 | `continue` 编写设计文档 | ○ pending | ○ pending |
 | TICK 6 | `send key:enter` 批准写入 | ○ pending | ○ pending |
@@ -67,7 +67,7 @@
 | TICK 28 | — | — | `complete` 审查完成 |
 
 关键设计点：
-- **串行依赖**：node-claude 依赖 node-codex 完成，node-opencode 依赖 node-claude 完成
+- **串行依赖**：claude 依赖 codex 完成，opencode 依赖 claude 完成
 - **不同 CLI 各有角色**：codex 做设计、claude 写代码、opencode 做审查——各司其职
 - **权限自动审批**：每次写入请求都是项目范围内的，Chief 直接批准
 - **跨节点纠偏**：claude 自行实现 WebSocket 而非使用设计文档指定的 socket.io，Chief 纠偏使其回归设计

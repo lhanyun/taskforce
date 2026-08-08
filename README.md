@@ -22,7 +22,7 @@ cmux, reads their real terminals, and keeps watching until the work is truly don
 
 <img src="docs/assets/demo.svg" alt="Single-node demo" width="880">
 
-*One node (node-opencode) across 4 ticks — coding, permission menu,
+*One CLI (opencode) across 4 ticks — coding, permission menu,
 goal drift, and verified completion. Chief makes an independent decision per tick.*
 
 Tell your coding CLI:
@@ -56,7 +56,7 @@ when done, launch opencode to review the code and tests and fix any issues.
 Supervise the entire workflow.
 ```
 
-| Tick | node-codex | node-claude | node-opencode |
+| Tick | codex | claude | opencode |
 |---|---|---|---|
 | TICK 3 | `continue` writing design | ○ pending | ○ pending |
 | TICK 6 | `send key:enter` approve write | ○ pending | ○ pending |
@@ -69,7 +69,7 @@ Supervise the entire workflow.
 | TICK 28 | — | — | `complete` review done |
 
 Key design points:
-- **Sequential dependencies**: node-claude depends on node-codex; node-opencode depends on node-claude
+- **Sequential dependencies**: claude depends on codex; opencode depends on claude
 - **Different CLIs, different roles**: codex designs, claude codes, opencode reviews
 - **Automatic permission approval**: project-scoped writes are approved directly by Chief
 - **Cross-node drift correction**: claude implements raw WebSocket instead of the socket.io library specified in the design; Chief corrects it
