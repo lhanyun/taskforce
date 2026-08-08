@@ -1,7 +1,7 @@
 {
   "name": "taskforce",
-  "version": "0.1.0",
-  "description": "Coordinate terminal-visible coding agents with small tasks, hard evidence, patch scope checks, and acceptance review.",
+  "version": "0.2.0",
+  "description": "Supervise terminal-visible coding CLIs through cmux — launch them, read their real TUIs, and keep watching until the work is truly done.",
   "author": {
     "name": "Taskforce contributors"
   },
@@ -10,15 +10,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Taskforce",
-    "shortDescription": "Multi-agent coding orchestration",
-    "longDescription": "Taskforce coordinates coding agents through small task files, role routing, hard run evidence, patch scope checks, and acceptance review.",
+    "shortDescription": "Supervised multi-agent coding loops",
+    "longDescription": "Taskforce launches coding CLIs in visible cmux surfaces, reads their real terminals every 10-20 seconds, and lets Chief decide per node: continue, answer a permission menu, correct goal or boundary drift, or recover an exited worker. It verifies goal and implementation before marking a node done. It is not a role system, model router, patch integration framework, or general workflow platform.",
     "developerName": "Taskforce contributors",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
-      "Use Taskforce to split and delegate this coding goal.",
-      "Route this feature through Taskforce roles.",
-      "Review this Taskforce candidate patch."
+      "Use Taskforce. Launch opencode to implement the feature and run its tests. Keep supervising until done.",
+      "Use Taskforce. Launch codex to design, then claude to implement, then opencode to review. Supervise the whole workflow.",
+      "Use Taskforce. Launch parallel workers for the backend and frontend, then a reviewer. Supervise until complete."
     ],
     "brandColor": "#2563EB"
   }
