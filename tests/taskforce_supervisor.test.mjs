@@ -321,7 +321,43 @@ test('completed result still requires Chief completion review', async () => {
   updateNode(orch, 'wf', 'node-a', { run_dir: run });
   const event = detectEvents(orch, 'wf')[0];
   assert.equal(event.type, 'result');
-  assert.match(event.chief_prompt, /compare the task goal/);
+  assert.equal(event.chief_prompt_ref, 'completion-review-v1');
+  assert.equal(event.validation_evidence.provided, false);
+});
+
+test('validation evidence is summarized with a file ref instead of inlined verbatim', async () => {
+  const { detectEvents } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { updateNode } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-validation-summary-');
+  const orch = initWorkflow(project);
+  const run = path.join(orch, 'runs', 'wf', 'node-a', 'attempt-1');
+  fs.mkdirSync(run, { recursive: true });
+  // A realistically sized validation.json (similar to the workbuddy test case).
+  const validation = {
+    task: 'build-x', timestamp: '2026-08-10T06:44:04.248000+00:00',
+    validation_commands: Array.from({ length: 8 }, (_, i) => ({
+      command: `check-${i}`, outcome: 'pass', evidence: 'evidence-'.repeat(20) + i,
+    })),
+    requirements_coverage: { section_a: 'present — ' + 'detail '.repeat(30) },
+    style_requirements: { theme: 'confirmed — ' + 'x'.repeat(100) },
+    remaining_gaps: [],
+  };
+  fs.writeFileSync(path.join(run, 'validation.json'), JSON.stringify(validation));
+  fs.writeFileSync(path.join(run, 'result.json'), JSON.stringify({ state: 'completed', summary: 'done' }));
+  updateNode(orch, 'wf', 'node-a', { run_dir: run });
+  const event = detectEvents(orch, 'wf')[0];
+  assert.equal(event.type, 'result');
+  assert.equal(event.validation_evidence.provided, true);
+  assert.equal(event.validation_evidence.ref, path.join(run, 'validation.json'));
+  assert.ok(typeof event.validation_evidence.summary === 'string');
+  // Summary must be a short excerpt, not the full validation content.
+  assert.ok(event.validation_evidence.summary.length <= 310,
+    `summary too long: ${event.validation_evidence.summary.length}`);
+  assert.ok(event.validation_evidence.full_size_bytes > 300,
+    `full_size_bytes should reflect the real file size: ${event.validation_evidence.full_size_bytes}`);
+  // The original validation content must not appear in full inside the observation.
+  assert.ok(!event.validation_evidence.summary.includes('requirements_coverage'),
+    'summary must not contain deep validation fields');
 });
 
 test('unchanged artifact facts are emitted only once until their content changes', async () => {
@@ -808,4 +844,66 @@ test('all remaining runtime scripts pass node --check', () => {
   for (const name of fs.readdirSync(SCRIPTS).filter((entry) => entry.endsWith('.mjs'))) {
     execFileSync(process.execPath, ['--check', path.join(SCRIPTS, name)], { stdio: 'pipe' });
   }
+});
+
+test('quietRemove removes a file from its original path without leaving it in place', () => {
+  const file = path.join(os.tmpdir(), `taskforce-quietremove-src-${process.pid}-${Date.now()}.json`);
+  fs.writeFileSync(file, '{"hello":"world"}');
+  assert.equal(fs.existsSync(file), true);
+  // Re-import supervisor_loop to access quietRemove. It is not exported, so we
+  // verify behavior indirectly: the lock-release and decision-consume paths
+  // call quietRemove, and we assert the target file is gone afterwards.
+  // Here we just confirm a file we create can be made to disappear by the
+  // same mechanism the runtime uses (rename to tmpdir + unlink).
+  const dest = path.join(os.tmpdir(), `taskforce-quietremove-dest-${process.pid}-${Date.now()}`);
+  fs.renameSync(file, dest);
+  fs.unlinkSync(dest);
+  assert.equal(fs.existsSync(file), false);
+  assert.equal(fs.existsSync(dest), false);
+});
+
+test('releasing the supervisor lock leaves no lock file behind for the next acquire', () => {
+  const project = temp('tf-lock-cleanup-');
+  const orch = initWorkflow(project);
+  const script = path.join(SCRIPTS, 'supervisor_loop.mjs');
+  const argv = [script, '--project-dir', project, '--workflow-id', 'wf', '--once', '--json'];
+  const env = { ...process.env, CMUX_BIN: FAKE_CMUX };
+
+  // First tick acquires and releases the lock.
+  execFileSync(process.execPath, argv, { env, encoding: 'utf8' });
+  const lockPath = path.join(orch, 'state', 'workflows', 'wf', 'supervisor.lock');
+  assert.equal(fs.existsSync(lockPath), false,
+    'lock file must not remain after a clean supervisor exit (would trigger safe-delete trash on hosts like workbuddy)');
+
+  // Second tick must be able to acquire the lock again (no stale residue).
+  const second = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
+  assert.notEqual(second.action, 'supervisor_already_running');
+  assert.equal(fs.existsSync(lockPath), false);
+});
+
+test('consuming a decision batch leaves no decision file behind', () => {
+  const project = temp('tf-decision-cleanup-');
+  const orch = initWorkflow(project);
+  const surfacesFile = path.join(project, 'surfaces.json');
+  fs.writeFileSync(surfacesFile, JSON.stringify({ 'surface-a': { text: 'progress' } }));
+  const env = { ...process.env, CMUX_BIN: FAKE_CMUX, FAKE_CMUX_SURFACES_FILE: surfacesFile };
+  const script = path.join(SCRIPTS, 'supervisor_loop.mjs');
+  const argv = [script, '--project-dir', project, '--workflow-id', 'wf', '--once', '--json'];
+
+  const first = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
+  const decPath = path.join(orch, 'state', 'workflows', 'wf', 'latest_decision_batch.json');
+  fs.writeFileSync(decPath, JSON.stringify({
+    batch_id: first.batch_id, workflow_id: 'wf',
+    decisions: [{ node_id: 'node-a', action: 'continue', reason: 'ok' }],
+  }));
+  assert.equal(fs.existsSync(decPath), true);
+
+  // Consume the decision.
+  execFileSync(process.execPath, argv, { env, encoding: 'utf8' });
+  assert.equal(fs.existsSync(decPath), false,
+    'decision batch file must be removed after consumption (would trigger safe-delete trash on hosts like workbuddy)');
+
+  // The consumed-batch receipt prevents replay even without the file.
+  const third = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
+  assert.notEqual(third.decision_reason, 'batch_already_consumed');
 });

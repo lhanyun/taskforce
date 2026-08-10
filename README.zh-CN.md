@@ -97,11 +97,20 @@ Worker 在两次检查之间独立运行。固定产物只能补充证据，不�
 | 纠偏时重启并丢失上下文 | 向原 surface 发送具体指导 |
 | CLI 退出或声明完成就结束 | 检查真实实现和验证证据后完成 |
 
+### Token 消耗
+
+担心 token 开销？Taskforce 从设计上就适合用便宜模型运行。
+
+- **Chief（监督者）** 每 15 秒只读取一段压缩后的终端 tail，并输出一个简短决策（`continue` / `send` / `relaunch` / `complete`）。每次 tick 的载荷很小，便宜模型足以胜任——在宿主 CLI 会话里选一个便宜模型来监督即可。
+- **Worker** 支持按节点指定 `model`，重活用强模型，审查或脚手架节点用便宜模型。
+
+典型工作流：便宜模型监督，强模型写代码，便宜模型审查。每一层成本都由你掌控。
+
 ## 快速开始
 
 ### 环境准备
 
-- Codex CLI、Claude Code、OpenCode 或其他支持 Agent Skills 的环境
+- Codex CLI、Claude Code、OpenCode、workbuddy 或其他支持 Agent Skills 的环境
 - [cmux](https://cmux.com/) 并开启 Automation socket access
 - PATH 中至少一个 Worker CLI：`opencode`、`codex`、`claude` 或 `codebuddy`
 - Node.js 18+ 和一个 Git 项目
@@ -115,7 +124,7 @@ npx skills add lhanyun/taskforce \
   --skill taskforce --agent codex --global
 ```
 
-使用其他环境时，将 `codex` 替换为 `cursor`、`opencode` 或 `claude-code`。
+使用其他环境时，将 `codex` 替换为 `cursor`、`opencode`、`claude-code` 或 `workbuddy`。
 项目级安装只需在项目根目录执行并去掉 `--global`。
 
 ### 运行

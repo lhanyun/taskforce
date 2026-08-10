@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet("cursor", "codex", "opencode", "claude-code")]
+  [ValidateSet("cursor", "codex", "opencode", "claude-code", "workbuddy")]
   [string]$Agent,
 
   [ValidateSet("project", "global")]
@@ -22,6 +22,7 @@ if ($Scope -eq "project") {
     "codex" { Join-Path $Project ".agents" }
     "opencode" { Join-Path $Project ".agents" }
     "claude-code" { Join-Path $Project ".claude" }
+    "workbuddy" { Join-Path $Project ".workbuddy" }
   }
   $Parent = Join-Path $base "skills"
 }
@@ -43,6 +44,10 @@ else {
       $homePath = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
       Join-Path $homePath "skills"
     }
+    "workbuddy" {
+      $homePath = if ($env:WORKBUDDY_HOME) { $env:WORKBUDDY_HOME } else { Join-Path $HOME ".workbuddy" }
+      Join-Path $homePath "skills"
+    }
   }
 }
 
@@ -55,11 +60,23 @@ if (Test-Path -LiteralPath $Target) {
   if (-not $Force) {
     throw "Refusing to overwrite existing Taskforce skill: $Target. Re-run with -Force to replace this exact destination."
   }
+  # Preserve host-managed metadata (e.g. workbuddy's _user_meta.json) across replacement.
+  $PreservedMeta = $null
+  $MetaPath = Join-Path $Target "_user_meta.json"
+  if (Test-Path -LiteralPath $MetaPath -PathType Leaf) {
+    $PreservedMeta = [System.IO.Path]::GetTempFileName()
+    Copy-Item -LiteralPath $MetaPath -Destination $PreservedMeta
+  }
   Remove-Item -LiteralPath $Target -Recurse -Force
 }
 
 New-Item -ItemType Directory -Force -Path $Parent | Out-Null
 Copy-Item -LiteralPath $Source -Destination $Target -Recurse
+
+if ($PreservedMeta) {
+  Copy-Item -LiteralPath $PreservedMeta -Destination (Join-Path $Target "_user_meta.json")
+  Remove-Item -LiteralPath $PreservedMeta -Force
+}
 
 Write-Host "Installed the complete Taskforce skill to $Target"
 Write-Host "Next: reload your agent host and invoke Taskforce in a project."

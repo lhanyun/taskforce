@@ -101,11 +101,25 @@ pause screen supervision or auto-complete a task.
 | Restart to correct direction and lose context | Send guidance to the existing surface |
 | Finish when a CLI exits or claims success | Check implementation and validation first |
 
+### Token cost
+
+Worried about token spend? Taskforce is designed to run on cheap models.
+
+- **Chief (supervisor)** only reads a compact terminal tail every 15 seconds and
+  emits a short decision (`continue` / `send` / `relaunch` / `complete`). The
+  per-tick payload is small, so a cheap model is enough — pick an inexpensive
+  model in your host CLI session and let it supervise.
+- **Workers** accept a per-node `model`, so the heavy coding can run on a
+  capable model while review or scaffolding nodes use a cheaper one.
+
+A typical workflow: a cheap model supervises, a strong model writes code,
+a cheap model reviews. You stay in control of cost at every layer.
+
 ## Quick start
 
 ### Prerequisites
 
-- Codex CLI, Claude Code, OpenCode, or another environment that supports Agent Skills
+- Codex CLI, Claude Code, OpenCode, workbuddy, or another environment that supports Agent Skills
 - [cmux](https://cmux.com/) with Automation socket access enabled
 - At least one worker CLI in `PATH`: `opencode`, `codex`, `claude`, or `codebuddy`
 - Node.js 18+ and a Git project
@@ -119,7 +133,7 @@ npx skills add lhanyun/taskforce \
   --skill taskforce --agent codex --global
 ```
 
-Replace `codex` with `cursor`, `opencode`, or `claude-code` for another
+Replace `codex` with `cursor`, `opencode`, `claude-code`, or `workbuddy` for another
 environment. For a project-level install, run from the project root without
 `--global`.
 
