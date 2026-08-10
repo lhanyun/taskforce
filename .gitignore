@@ -6,6 +6,9 @@ __pycache__/
 # Project-local Taskforce runtime artifacts
 .taskforce/
 
+# Local Understand Anything analysis artifacts
+.understand-anything/
+
 # Internal design specs and implementation plans (not for public release)
 specs/
 docs/superpowers/
