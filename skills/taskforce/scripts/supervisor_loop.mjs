@@ -791,6 +791,114 @@ export function flushBuffer(orch, workflowId, buffer) {
 }
 
 // ---------------------------------------------------------------------------
+// cmux sidebar sync
+// ---------------------------------------------------------------------------
+
+// Push global workflow status (per-node pill, progress bar, recent decision
+// log) to every worker's cmux workspace sidebar at the end of each supervisor
+// tick. cmux has no broadcast API, so set-status / set-progress / log are
+// called once per known workspace. Non-zero exits are swallowed: cmux does not
+// retry and the caller degrades silently. Returns early when cmux is
+// unavailable or no workspace IDs are known.
+export function pushCmuxSidebar(orch, workflowId) {
+  const cmux = resolveCmuxPath();
+  if (!cmux) return;
+
+  const workflow = loadWorkflow(orch, workflowId);
+  if (!workflow.workflow_id) return;
+
+  const nodes = workflow.nodes || [];
+  const stateDir = path.join(orch, 'state', workflowId);
+
+  const workspaceIds = new Set();
+  const nodeInfos = [];
+  for (const node of nodes) {
+    const statePath = path.join(stateDir, `${node.id}.json`);
+    const payload = fs.existsSync(statePath) ? readJson(statePath) : {};
+    const ws = payload.cmux_workspace || '';
+    if (ws) workspaceIds.add(ws);
+    nodeInfos.push({
+      id: node.id,
+      cli: node.cli || '',
+      status: node.status || 'pending',
+      launch_phase: payload.launch_phase || node.launch_phase || null,
+      event: payload.event || node.event || null,
+      workspace: ws,
+    });
+  }
+
+  if (workspaceIds.size === 0) return;
+
+  const completed = nodeInfos.filter((n) => n.status === 'completed').length;
+  const total = nodeInfos.length;
+  const progress = total > 0 ? completed / total : 0;
+
+  let recentDecision = null;
+  const decisionsPath = path.join(orch, 'state', 'workflows', workflowId, 'decisions.jsonl');
+  if (fs.existsSync(decisionsPath)) {
+    const lines = fs.readFileSync(decisionsPath, 'utf8').trim().split('\n').slice(-5);
+    for (const line of lines.reverse()) {
+      try {
+        const entry = JSON.parse(line);
+        const dec = (entry.decisions || []).find((d) => d.action !== 'continue');
+        if (dec) { recentDecision = { ...dec, at: entry.at }; break; }
+      } catch (_) {}
+    }
+  }
+
+  for (const wsId of workspaceIds) {
+    for (const node of nodeInfos) {
+      const value = `${node.cli} · ${node.status}`;
+      const icon = iconForNode(node);
+      const color = colorForStatus(node.status, node.event);
+      const args = ['set-status', `taskforce:${node.id}`, value, '--workspace', wsId, '--priority', '50'];
+      if (icon) args.push('--icon', icon);
+      if (color) args.push('--color', color);
+      spawnSync(cmux, args, { encoding: 'utf8', timeout: 5000 });
+    }
+
+    spawnSync(cmux, [
+      'set-progress', String(progress.toFixed(2)),
+      '--workspace', wsId,
+      '--label', `Taskforce: ${completed}/${total} done`,
+    ], { encoding: 'utf8', timeout: 5000 });
+
+    if (recentDecision) {
+      const level = logLevelForAction(recentDecision.action);
+      const text = `${recentDecision.action} on ${recentDecision.node_id}: ${recentDecision.reason || ''}`;
+      spawnSync(cmux, [
+        'log', text, '--workspace', wsId, '--level', level, '--source', 'taskforce',
+      ], { encoding: 'utf8', timeout: 5000 });
+    }
+  }
+}
+
+function iconForNode(node) {
+  if (node.status === 'completed') return 'checkmark';
+  if (node.status === 'cancelled') return 'xmark';
+  if (node.status === 'pending') return 'clock';
+  if (node.launch_phase) return 'arrow.2.circlepath';
+  if (node.event && ['agent_question', 'permission_request'].includes(node.event.type)) return 'questionmark.circle';
+  if (node.status === 'running') return 'play';
+  return null;
+}
+
+function colorForStatus(status, event) {
+  if (status === 'completed') return '#3fb950';
+  if (status === 'cancelled') return '#f85149';
+  if (status === 'pending') return '#8b949e';
+  if (event && ['agent_question', 'permission_request'].includes(event.type)) return '#d29922';
+  if (status === 'running') return '#58a6ff';
+  return null;
+}
+
+function logLevelForAction(action) {
+  if (action === 'complete') return 'success';
+  if (action === 'relaunch') return 'error';
+  return 'info';
+}
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 
@@ -897,6 +1005,13 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
   // 4. Read every active surface and emit exactly one next observation batch.
   collectCycle(orch, workflowId, buffer, reviewIntervalSeconds);
   const { batch } = flushBuffer(orch, workflowId, buffer);
+
+  // 5. Push global workflow status to every worker's cmux workspace sidebar.
+  //    Runs once per tick, after the observation batch is flushed and before
+  //    returning. Degrades silently when cmux is unavailable or no workspace
+  //    IDs are known.
+  pushCmuxSidebar(orch, workflowId);
+
   return {
     action: batch ? 'observe' : 'idle',
     decision_processed: decisionResult.processed,

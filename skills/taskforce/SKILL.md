@@ -57,6 +57,9 @@ node <skill-dir>/scripts/supervisor_loop.mjs \
   --wait --poll-seconds 15 --json
 ```
 
+If the Chief process runs outside cmux, enable `CMUX_SOCKET_MODE=allowAll` so
+the supervisor can push workflow status to each worker's sidebar.
+
 ## Setup
 
 ```bash
