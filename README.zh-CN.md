@@ -119,13 +119,28 @@ Worker 在两次检查之间独立运行。固定产物只能补充证据，不�
 
 ### 安装
 
+`codex`、`cursor`、`opencode`、`claude-code` 环境：
+
 ```bash
 npx skills add lhanyun/taskforce \
   --skill taskforce --agent codex --global
 ```
 
-使用其他环境时，将 `codex` 替换为 `cursor`、`opencode`、`claude-code` 或 `workbuddy`。
+使用其他环境时，将 `codex` 替换为 `cursor`、`opencode` 或 `claude-code`。
 项目级安装只需在项目根目录执行并去掉 `--global`。
+
+`workbuddy` 环境目前尚未进入 `npx skills` 的 agent 注册表。直接用自带的
+`install.sh` 安装即可，无需克隆项目（仅需 `curl` 和 `tar`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lhanyun/taskforce/main/install.sh \
+  | bash -s -- --agent workbuddy --scope global
+```
+
+项目级安装：先 `cd` 到项目根目录，再使用 `--scope project`（会在该目录创建
+`.workbuddy/skills/`）。重新执行时加 `--force` 可覆盖已有安装；`install.sh`
+会在覆盖时保留 workbuddy 的 `_user_meta.json`。如果已经克隆了本项目，
+`./install.sh --agent workbuddy --scope global` 效果相同。
 
 ### 运行
 
