@@ -128,14 +128,31 @@ The CLI running Taskforce and the worker CLI may be the same tool or different o
 
 ### Install
 
+For `codex`, `cursor`, `opencode`, or `claude-code`:
+
 ```bash
 npx skills add lhanyun/taskforce \
   --skill taskforce --agent codex --global
 ```
 
-Replace `codex` with `cursor`, `opencode`, `claude-code`, or `workbuddy` for another
+Replace `codex` with `cursor`, `opencode`, or `claude-code` for another
 environment. For a project-level install, run from the project root without
 `--global`.
+
+For `workbuddy`, the `npx skills` CLI does not yet include `workbuddy` in its
+agent registry. Install directly with the bundled `install.sh` — no clone
+needed (`curl` and `tar` are the only prerequisites):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lhanyun/taskforce/main/install.sh \
+  | bash -s -- --agent workbuddy --scope global
+```
+
+For a project-level install, `cd` into the project root first and use
+`--scope project` (creates `.workbuddy/skills/` there). Re-run with `--force`
+to replace an existing installation; `install.sh` preserves workbuddy's
+`_user_meta.json` across replacements. If you have already cloned the repo,
+`./install.sh --agent workbuddy --scope global` works the same way.
 
 ### Run
 
