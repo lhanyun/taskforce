@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# --- bootstrap: allow `curl ... | bash` remote invocation ---
+# When piped to bash, BASH_SOURCE[0] is empty and the script has no on-disk
+# location, so it cannot locate the bundled skills/ directory next to itself.
+# Fetch the repo tarball into a temp dir and re-exec the real install.sh
+# with all original arguments. Local `./install.sh` is unaffected.
+if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
+  for dep in curl tar; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      echo "Remote install requires '$dep' in PATH. Install it and re-run," >&2
+      echo "or clone the repo and run ./install.sh directly." >&2
+      exit 1
+    fi
+  done
+  REMOTE_TARBALL="https://github.com/lhanyun/taskforce/archive/refs/heads/main.tar.gz"
+  BOOTSTRAP_TMP="$(mktemp -d)"
+  trap 'rm -rf "$BOOTSTRAP_TMP"' EXIT
+  echo "Fetching Taskforce from $REMOTE_TARBALL …" >&2
+  curl -fsSL "$REMOTE_TARBALL" -o "$BOOTSTRAP_TMP/repo.tar.gz"
+  tar -xzf "$BOOTSTRAP_TMP/repo.tar.gz" -C "$BOOTSTRAP_TMP"
+  exec bash "$BOOTSTRAP_TMP/taskforce-main/install.sh" "$@"
+fi
+# --- end bootstrap ---
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT=""
 SCOPE="global"
