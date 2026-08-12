@@ -81,6 +81,20 @@ export function writeNodeState(orch, workflowId, nodeId, payload) {
   return merged;
 }
 
+// A worker model is opt-in. Only an explicit, non-empty identifier reaches a
+// CLI as a --model flag; every other value means "let the CLI use its own
+// default model". Without this, an empty string or a placeholder like
+// "default" would be forwarded verbatim and force the CLI into a model
+// picker or an unknown-model error.
+const DEFAULT_MODEL_ALIASES = new Set(['', 'null', 'none', 'default', 'auto', 'undefined']);
+
+export function normalizeModel(value) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  const text = String(value).trim();
+  if (DEFAULT_MODEL_ALIASES.has(text.toLowerCase())) return null;
+  return text;
+}
+
 export function slug(value) {
   if (typeof value !== 'string') value = String(value);
   return value.trim().replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '');

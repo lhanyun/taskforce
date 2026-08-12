@@ -102,7 +102,7 @@ Worker 在两次检查之间独立运行。固定产物只能补充证据，不�
 担心 token 开销？Taskforce 从设计上就适合用便宜模型运行。
 
 - **Chief（监督者）** 每 15 秒只读取一段压缩后的终端 tail，并输出一个简短决策（`continue` / `send` / `relaunch` / `complete`）。每次 tick 的载荷很小，便宜模型足以胜任——在宿主 CLI 会话里选一个便宜模型来监督即可。
-- **Worker** 支持按节点指定 `model`，重活用强模型，审查或脚手架节点用便宜模型。
+- **Worker** 支持按节点可选指定 `model`，重活用强模型，审查或脚手架节点用便宜模型。只有你明确给出模型 ID 时才会指定；不指定时 CLI 直接用它自己已配置的默认模型。
 
 典型工作流：便宜模型监督，强模型写代码，便宜模型审查。每一层成本都由你掌控。
 
@@ -158,8 +158,9 @@ curl -fsSL https://raw.githubusercontent.com/lhanyun/taskforce/main/install.sh \
 启动 claude 做整体审查。持续监督整个工作流。
 ```
 
-描述中可以包含：CLI、任务、并行或先后关系、完成条件，以及 CLI 支持的精确 model
-ID。无需手写 workflow JSON、profiles 或轮询脚本。
+描述中可以包含：CLI、任务、并行或先后关系、完成条件，以及可选的精确 model
+ID。不写 model 时，Worker CLI 直接用自己的默认模型启动，Taskforce 不会替你挑选。
+无需手写 workflow JSON、profiles 或轮询脚本。
 
 ## 工作原理
 

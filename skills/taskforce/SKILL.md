@@ -97,6 +97,11 @@ cmux app with `open -a cmux`, wait a few seconds, then re-run setup; only the
 Node ID is the runtime routing identity. Multiple nodes may reuse one task
 contract.
 
+`model` is optional and defaults to `null`. Set it only to an exact model ID the
+user asked for. Do not infer one from the task, enumerate the CLI's models, or
+ask the user to choose. With `model: null` Taskforce passes no `--model` flag
+and the CLI starts on the default model the user already configured for it.
+
 ## Four factual states
 
 ```text

@@ -21,25 +21,23 @@ Configure it in a workflow node:
   "id": "backend-auth",
   "task_contract": "backend-auth",
   "cli": "opencode",
-  "model": "your-model-name",
+  "model": null,
   "depends_on": [],
   "status": "pending"
 }
 ```
 
-`model: null` means OpenCode should use its default model. Do not put private
-provider aliases in the public default template. Installation does not write
-this project configuration; first-use discovery and explicit user confirmation
-do.
+`model: null` is the default and means OpenCode starts on the model the user
+already configured for it. Do not put private provider aliases in the public
+default template.
 
 ## Runtime Contract
 
-- Discover models from the installed OpenCode CLI when the CLI exposes a stable
-  list or help surface. If discovery is unavailable, accept user-provided model
-  identifiers without inventing defaults.
+- Never enumerate OpenCode's models or ask the user to pick one. Set `model`
+  only when the user supplied an exact model ID.
 - Launch OpenCode only as an interactive TUI. Taskforce supplies the task prompt
   through the selected terminal backend.
 - When `model` is non-null, pass it using OpenCode's supported TUI model
   argument. When `model` is null, omit any model argument.
-- Keep node config limited to `cli` and `model`; task scope, boundaries, and
-  validation belong in the task contract.
+- Keep node config limited to `cli` and an optional `model`; task scope,
+  boundaries, and validation belong in the task contract.

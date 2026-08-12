@@ -29,7 +29,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { parseArgs, nowIso, atomicWriteJson, appendJsonl, readJson, writeNodeState } from './protocol_lib.mjs';
+import { parseArgs, nowIso, atomicWriteJson, appendJsonl, normalizeModel, readJson, writeNodeState } from './protocol_lib.mjs';
 import { collectAllSurfaces, collectSurfaces, readCmuxScreen } from './surface_collector.mjs';
 import { resolveCmuxPath } from './doctor.mjs';
 import { parseDecisionBatch, classifyDecisions } from './decision_batch.mjs';
@@ -397,8 +397,9 @@ export function launchReadyNodes(orch, project, workflowId, skillDir) {
       '--execute',
     ];
 
-    if (node.model) {
-      launchArgs.push('--model', String(node.model));
+    const model = normalizeModel(node.model);
+    if (model) {
+      launchArgs.push('--model', model);
     }
 
     try {
@@ -650,6 +651,17 @@ export function tryConsumeDecision(orch, workflowId, nodeSurfaceMap, expectedBat
 // Observation collection
 // ---------------------------------------------------------------------------
 
+// A running node owes Chief a fresh review once the review interval has passed
+// since its last decision, regardless of which action that was and of whether
+// the screen still hashes to the reviewed one. Gating this on an unchanged
+// hash used to drop nodes whose previous observation carried no screen at all.
+function reviewIntervalElapsed(lastAction, reviewIntervalSeconds) {
+  if (!lastAction) return true;
+  const reviewedAt = new Date(lastAction.applied_at || lastAction.decided_at || '').getTime();
+  if (!Number.isFinite(reviewedAt)) return true;
+  return Date.now() - reviewedAt >= reviewIntervalSeconds * 1000;
+}
+
 // One poll cycle: collect surfaces and accumulate one observation per node.
 // v0.2: node_id is the primary identity for surface map, observations, and cursors.
 export function collectCycle(orch, workflowId, buffer, reviewIntervalSeconds = 15) {
@@ -682,11 +694,7 @@ export function collectCycle(orch, workflowId, buffer, reviewIntervalSeconds = 1
     const existing = buffer.observations.find((o) => o.node_id === nodeKey);
     const node = nodes.get(nodeKey);
     const lastAction = node?.last_action || null;
-    const reviewedAt = new Date(lastAction?.applied_at || lastAction?.decided_at || '').getTime();
-    const sameReviewedScreen = Boolean(lastAction?.reviewed_screen_hash) &&
-      lastAction.reviewed_screen_hash === surface.delta.screen_hash;
-    const periodicReviewDue = lastAction?.action === 'continue' && sameReviewedScreen &&
-      Number.isFinite(reviewedAt) && Date.now() - reviewedAt >= reviewIntervalSeconds * 1000;
+    const periodicReviewDue = reviewIntervalElapsed(lastAction, reviewIntervalSeconds);
     const postSend = lastAction?.action === 'send';
     const needsFollowup = postSend || periodicReviewDue || Boolean(node?.event);
     if (!surface.changed && !existing && !needsFollowup) continue;
@@ -725,7 +733,44 @@ export function collectCycle(orch, workflowId, buffer, reviewIntervalSeconds = 1
     }
   }
 
+  appendUnobservableNodes(workflow, collected, buffer, reviewIntervalSeconds);
+
   return { collected, nodeSurfaceMap };
+}
+
+// A running node whose surface is missing or unreadable produces no screen and
+// therefore no observation. Its immediate event (cli_exit, launch_failed, ...)
+// is emitted only once, so after Chief decides on it the node would fall silent
+// and the wait loop would spin on `idle` forever while the workflow is still
+// nonterminal. Emit a screenless observation instead so Chief keeps deciding.
+function appendUnobservableNodes(workflow, collected, buffer, reviewIntervalSeconds) {
+  const observed = new Set(buffer.observations.map((observation) => observation.node_id));
+  const collectedByNode = new Map(collected.map((surface) => [surface.node_id || surface.task_id, surface]));
+
+  for (const node of workflow.nodes || []) {
+    if (node.status !== 'running' || observed.has(node.id)) continue;
+    const surface = collectedByNode.get(node.id);
+    if (surface?.delta) continue;
+
+    // A surface that has not come up yet is normal startup, not silence.
+    // launching_timeout covers the case where it never appears.
+    if (node.launch_phase) {
+      const launchedAt = new Date(node.launched_at || '').getTime();
+      if (!Number.isFinite(launchedAt) || Date.now() - launchedAt < LAUNCHING_TIMEOUT_SECONDS * 1000) continue;
+    }
+    if (!reviewIntervalElapsed(node.last_action || null, reviewIntervalSeconds)) continue;
+
+    buffer.observations.push({
+      node_id: node.id,
+      task_id: node.task,
+      surface: node.cmux_surface || '',
+      current_screen: '',
+      screen_hash: '',
+      screen_changed: false,
+      review_reason: 'surface_unreadable',
+      surface_status: surface?.error || (node.cmux_surface ? 'screen_read_unavailable' : 'no_surface'),
+    });
+  }
 }
 
 // Enrich buffered observations with task context.
@@ -939,6 +984,7 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
       pending_review: true,
       decision_processed: false,
       decision_reason: decisionResult.reason || null,
+      decision_errors: decisionResult.result?.errors || [],
       batch_id: previousBatch.batch_id,
       review_required: true,
       workflow_terminal: false,

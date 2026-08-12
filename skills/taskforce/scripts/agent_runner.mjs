@@ -16,6 +16,7 @@ import {
   readJson,
   atomicWriteJson,
   nodeRunDir,
+  normalizeModel,
   writeNodeState,
 } from './protocol_lib.mjs';
 import { tuiLaunchCommand, getAdapter } from './cli_adapters.mjs';
@@ -119,7 +120,7 @@ export function main(argv) {
   taskFile = path.resolve(taskFile);
 
   const cli = String(args.cli || '').trim();
-  const model = args.model !== undefined ? args.model : null;
+  const model = normalizeModel(args.model);
   const workflowId = args['workflow-id'];
   const nodeId = args['node-id'];
 

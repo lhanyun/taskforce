@@ -80,4 +80,4 @@ if ($PreservedMeta) {
 
 Write-Host "Installed the complete Taskforce skill to $Target"
 Write-Host "Next: reload your agent host and invoke Taskforce in a project."
-Write-Host "First use will run doctor, role CLI/model confirmation, cmux checks, and preflight."
+Write-Host "First use will scan PATH for supported worker CLIs and check cmux access."

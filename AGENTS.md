@@ -10,7 +10,11 @@ You are the Chief. You run the supervisor loop and make decisions about workflow
 
 1. Initialize or reuse `.taskforce/`.
 2. Create task contracts at `.taskforce/tasks/<task-id>.json` with `{id, goal, boundaries[], validation[], done_when[]}`.
-3. Create workflow nodes at `.taskforce/workflows/<workflow-id>.json`, each with `cli` and `model` fields.
+3. Create workflow nodes at `.taskforce/workflows/<workflow-id>.json`, each with a `cli` field.
+   `model` is optional and defaults to `null`. Set it only to an exact model ID
+   the user gave you. Never infer, discover, or pick a model yourself: with
+   `model: null` no `--model` flag is passed and the CLI starts on its own
+   configured default.
 4. Repeatedly run one short supervisor tick: collect surfaces → Chief reviews every current tail → dispatch decisions.
 5. Loop until all nodes reach a terminal state (`completed` or `cancelled`).
 

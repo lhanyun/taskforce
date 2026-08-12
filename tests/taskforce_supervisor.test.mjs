@@ -522,6 +522,74 @@ test('CLI adapters launch Claude positionally and OpenCode with --prompt', async
   assert.deepEqual(tuiLaunchCommand('opencode', 'm', 'do it'), ['opencode', '--model', 'm', '--prompt', 'do it']);
 });
 
+test('an unspecified model launches the CLI on its own default', async () => {
+  const { tuiLaunchCommand } = await import(path.join(SCRIPTS, 'cli_adapters.mjs'));
+  for (const unspecified of [null, undefined, '', '   ', 'null', 'default', 'auto', 'None']) {
+    assert.deepEqual(tuiLaunchCommand('codex', unspecified, 'do it'), ['codex', 'do it'],
+      `model ${JSON.stringify(unspecified)} must not produce a --model flag`);
+  }
+  assert.deepEqual(tuiLaunchCommand('codex', '  gpt-5  ', 'do it'), ['codex', '--model', 'gpt-5', 'do it']);
+});
+
+test('a node keeps no model unless one was explicitly requested', async () => {
+  const { createWorkflow, loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-node-model-');
+  const orch = path.join(project, '.taskforce');
+  fs.mkdirSync(path.join(orch, 'workflows'), { recursive: true });
+  createWorkflow(orch, 'wf', [
+    { id: 'a', task: 'task-a', cli: 'opencode', depends_on: [] },
+    { id: 'b', task: 'task-a', cli: 'opencode', model: '', depends_on: [] },
+    { id: 'c', task: 'task-a', cli: 'opencode', model: 'default', depends_on: [] },
+    { id: 'd', task: 'task-a', cli: 'opencode', model: 'gpt-5', depends_on: [] },
+  ]);
+  const nodes = loadWorkflow(orch, 'wf').nodes;
+  assert.equal(nodes.find((node) => node.id === 'a').model, null);
+  assert.equal(nodes.find((node) => node.id === 'b').model, null);
+  assert.equal(nodes.find((node) => node.id === 'c').model, null);
+  assert.equal(nodes.find((node) => node.id === 'd').model, 'gpt-5');
+});
+
+test('a launcher survives a project path with shell metacharacters', () => {
+  const project = temp('tf-quote-$(id) ');
+  const orch = initWorkflow(project);
+  execFileSync(process.execPath, [path.join(SCRIPTS, 'prepare_terminal_launch.mjs'),
+    '--project-dir', project, '--task-file', path.join(orch, 'tasks', 'task-a.json'),
+    '--workflow-id', 'wf', '--node-id', 'node-a', '--cli', 'opencode'], { encoding: 'utf8' });
+  const launcher = fs.readFileSync(path.join(orch, 'launchers', 'task-a-node-a.sh'), 'utf8');
+  assert.doesNotMatch(launcher, /cd "\/.*\$\(id\)/, 'the project path must not be interpolated unquoted');
+  assert.match(launcher, /export PATH=/);
+  execFileSync('bash', ['-n', path.join(orch, 'launchers', 'task-a-node-a.sh')]);
+});
+
+test('a running node with an unreadable surface still returns a Chief review', () => {
+  const project = temp('tf-unobservable-');
+  const orch = initWorkflow(project);
+  // The node is running but its surface never came up, so no screen can be read.
+  const workflowPath = path.join(orch, 'workflows', 'wf.json');
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  workflow.nodes[0].cmux_surface = '';
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+  const statePath = path.join(orch, 'state', 'wf', 'node-a.json');
+  const state = JSON.parse(fs.readFileSync(statePath));
+  state.cmux_surface = '';
+  fs.writeFileSync(statePath, JSON.stringify(state));
+
+  const result = JSON.parse(execFileSync(process.execPath, [
+    path.join(SCRIPTS, 'supervisor_loop.mjs'), '--project-dir', project,
+    '--workflow-id', 'wf', '--once', '--json',
+  ], { env: { ...process.env, CMUX_BIN: FAKE_CMUX }, encoding: 'utf8' }));
+
+  assert.equal(result.action, 'observe');
+  assert.equal(result.observations[0].node_id, 'node-a');
+  assert.equal(result.observations[0].review_reason, 'surface_unreadable');
+  assert.equal(result.observations[0].surface_status, 'no_surface');
+});
+
+test('an empty workflow is terminal instead of supervised forever', async () => {
+  const { workflowState } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  assert.equal(workflowState({ workflow_id: 'wf', nodes: [] }), 'completed');
+});
+
 test('agent runner records launch progress as metadata while status stays running', () => {
   const project = temp('tf-runner-state-');
   const orch = initWorkflow(project);

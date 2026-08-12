@@ -31,13 +31,13 @@ preflight happen on first use.
 
 ## Runtime Contract
 
-Each workflow node specifies `cli` and `model`; `model: null` means Codex
-should use its CLI default. Task contracts define boundaries, validation, and
-completion criteria.
+Each workflow node specifies `cli`; `model` is optional and defaults to `null`,
+meaning Codex uses its own CLI default. Task contracts define boundaries,
+validation, and completion criteria.
 
-Codex CLI agents are launched through the interactive Codex TUI. Discover
-available models from the local Codex CLI when possible, then ask the user to
-confirm the node configuration. If a node has a non-null model, pass it using
-the Codex TUI's supported model argument; if the model is null, omit model
-flags. Taskforce prompts carry coding and review intent rather than storing
-that behavior in node config.
+Codex CLI agents are launched through the interactive Codex TUI. Do not
+enumerate Codex models or ask the user to choose one. Set a node's model only
+when the user supplied an exact model ID, and pass it using the Codex TUI's
+supported model argument; when the model is null, omit model flags entirely.
+Taskforce prompts carry coding and review intent rather than storing that
+behavior in node config.

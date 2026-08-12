@@ -11,15 +11,15 @@ Adapters should stay thin:
 
 ## Workflow Node Configuration
 
-Each workflow node specifies `cli` and `model`. `model: null` means use the
-CLI's default model. Task contracts define boundaries, validation, and
-completion criteria separately.
+Each workflow node specifies `cli`. `model` is optional and defaults to `null`,
+meaning the CLI starts on the default model the user already configured for it.
+Task contracts define boundaries, validation, and completion criteria separately.
 
-Adapters are TUI launchers. They should discover available model identifiers
-from the local CLI when possible, ask the user to confirm node configuration,
-and pass a configured model only through the CLI's supported TUI model argument.
-They should not encode task behavior in node config; task contracts and prompts
-carry that intent.
+Adapters are TUI launchers. They should never enumerate models, infer one from
+the task, or ask the user to pick one; a model belongs in node config only when
+the user supplied an exact model ID, and it is then passed through the CLI's
+supported TUI model argument. They should not encode task behavior in node
+config; task contracts and prompts carry that intent.
 
 Current adapters:
 
