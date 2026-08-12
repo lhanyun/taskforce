@@ -68,7 +68,9 @@ node <skill-dir>/scripts/setup.mjs --project-dir <project-dir> --json
 
 Setup creates the minimal `.taskforce/` tree and verifies Git, cmux Automation
 socket access, and at least one supported CLI in `PATH`. It does not execute CLI
-version or model-list commands.
+version or model-list commands. If setup reports `cmux_not_running`, start the
+cmux app with `open -a cmux`, wait a few seconds, then re-run setup; only the
+`cmux_not_accessible` classification requires changing Automation socket settings.
 
 ## Contracts and nodes
 

@@ -952,6 +952,11 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
 
   const completion = checkWorkflowCompletion(orch, workflowId);
   if (completion.completed) {
+    // Final terminal-state push: progress=1.0, all pills green/red, one
+    // success/error log. Without this, the sidebar would freeze on the last
+    // pre-completion tick (the completed/cancelled node still showing running,
+    // progress < 1.0). See docs/cmux-sidebar-sync.md "工作流结束".
+    pushCmuxSidebar(orch, workflowId);
     return {
       action: 'workflow_complete',
       ...completion,

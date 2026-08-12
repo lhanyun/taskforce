@@ -14,6 +14,33 @@ export const AUTOMATION_HELP =
   'Open cmux → Settings → Automation and change Socket control mode from ' +
   'cmux processes only to Automation. Do not enable full open access.';
 
+export const CMUX_NOT_RUNNING_HELP =
+  'cmux is installed but not running. Start it with `open -a cmux`, wait a ' +
+  'few seconds for the socket to come up, then re-run Taskforce setup.';
+
+// Process-name patterns used to detect a running cmux app when `cmux ping`
+// fails. The binary path lives inside the .app bundle, so matching the app
+// name covers both /Applications and ~/Applications installs.
+export const CMUX_PROCESS_PATTERNS = [
+  /\/cmux\.app\//i,
+  /\bcmux\b/i,
+];
+
+function isCmuxProcessRunning() {
+  // Test override: when set, skips the real pgrep so tests can simulate
+  // "app not running" deterministically regardless of the host's actual state.
+  if (process.env.TASKFORCE_CMUX_PROCESS_RUNNING === '0') return false;
+  if (process.env.TASKFORCE_CMUX_PROCESS_RUNNING === '1') return true;
+  // pgrep is available on macOS and most Linux distros. Fall back to false
+  // (treat as "unknown / not running") when unavailable — setup will then
+  // surface the Automation-settings remediation as before.
+  const r = spawnSync('pgrep', ['-fl', 'cmux'], { encoding: 'utf8', timeout: 4000 });
+  if (r.error || r.status === null) return false;
+  if (r.status !== 0) return false; // pgrep exits 1 when no match
+  const lines = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
+  return lines.some((line) => CMUX_PROCESS_PATTERNS.some((re) => re.test(line)));
+}
+
 // Error strings that indicate a sandbox (e.g. macOS App Sandbox, Seatbelt) is
 // blocking the Unix socket connection to cmux — NOT a cmux settings problem.
 // When these appear, the user should re-run outside the sandbox rather than
@@ -164,6 +191,19 @@ export function discoverCmux() {
     // permitted" / "Permission denied" and mean the host process can't reach
     // cmux's Unix socket — not that cmux Automation is misconfigured.
     const sandboxSuspected = SANDBOX_ERROR_PATTERNS.some((re) => re.test(pingDiagnostic));
+    // Distinguish "cmux app not running" from "running but socket misconfigured".
+    // ping fails in both cases; only the latter needs the Automation-settings
+    // remediation. When the app process is absent, the right fix is to launch it.
+    if (!sandboxSuspected && !isCmuxProcessRunning()) {
+      return {
+        installed: true,
+        path: found,
+        ready: false,
+        classification: 'cmux_not_running',
+        diagnostic: pingDiagnostic,
+        remediation: CMUX_NOT_RUNNING_HELP,
+      };
+    }
     return {
       installed: true,
       path: found,

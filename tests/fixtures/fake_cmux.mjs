@@ -71,6 +71,17 @@ if (args.length > 0 && (args[0] === 'new-workspace' || args[0] === 'workspace' |
   process.exit(0);
 }
 
+if (args.length > 0 && (args[0] === 'set-status' || args[0] === 'set-progress' || args[0] === 'log')) {
+  // Sidebar status/progress/log commands. pushCmuxSidebar swallows failures
+  // silently; logging here lets tests assert the terminal-state push happened.
+  const log = process.env.FAKE_CMUX_LOG;
+  if (log) {
+    fs.appendFileSync(log, JSON.stringify(args) + '\n', 'utf8');
+  }
+  process.stdout.write('ok\n');
+  process.exit(0);
+}
+
 if (args.length > 0 && args[0] === 'send') {
   const log = process.env.FAKE_CMUX_LOG;
   if (log) {
