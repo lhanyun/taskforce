@@ -907,3 +907,75 @@ test('consuming a decision batch leaves no decision file behind', () => {
   const third = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
   assert.notEqual(third.decision_reason, 'batch_already_consumed');
 });
+
+test('workflow_complete pushes terminal sidebar state before returning', () => {
+  const project = temp('tf-sidebar-terminal-');
+  const orch = initWorkflow(project, 'wf', 'completed');
+  // pushCmuxSidebar needs cmux_workspace in the node state file to know where
+  // to push. The default initWorkflow helper does not set it.
+  const statePath = path.join(orch, 'state', 'wf', 'node-a.json');
+  const state = JSON.parse(fs.readFileSync(statePath));
+  state.cmux_workspace = 'workspace-a';
+  fs.writeFileSync(statePath, JSON.stringify(state));
+
+  const log = path.join(project, 'cmux.log');
+  const output = JSON.parse(execFileSync(process.execPath, [
+    path.join(SCRIPTS, 'supervisor_loop.mjs'), '--project-dir', project,
+    '--workflow-id', 'wf', '--once', '--json',
+  ], { env: { ...process.env, CMUX_BIN: FAKE_CMUX, FAKE_CMUX_LOG: log }, encoding: 'utf8' }));
+
+  assert.equal(output.action, 'workflow_complete');
+  assert.equal(output.workflow_terminal, true);
+
+  // The sidebar push must have happened: set-status for the node pill and
+  // set-progress at 1.0 (all nodes completed).
+  const entries = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+  const setStatus = entries.filter((e) => e[0] === 'set-status');
+  const setProgress = entries.filter((e) => e[0] === 'set-progress');
+  assert.ok(setStatus.length >= 1, 'set-status must be pushed on workflow completion');
+  assert.ok(setProgress.length >= 1, 'set-progress must be pushed on workflow completion');
+  assert.equal(setProgress[0][1], '1.00', 'progress must be 1.0 when all nodes completed');
+  assert.match(setStatus[0].join(' '), /checkmark/, 'completed node pill must use checkmark icon');
+});
+
+test('discoverCmux classifies cmux_not_running when ping fails and no process is alive', async () => {
+  const { discoverCmux } = await import(path.join(SCRIPTS, 'doctor.mjs'));
+  const oldBin = process.env.CMUX_BIN;
+  const oldProc = process.env.TASKFORCE_CMUX_PROCESS_RUNNING;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  process.env.FAKE_CMUX_SCENARIO = 'connection';
+  process.env.TASKFORCE_CMUX_PROCESS_RUNNING = '0';
+  try {
+    const result = discoverCmux();
+    assert.equal(result.installed, true);
+    assert.equal(result.ready, false);
+    assert.equal(result.classification, 'cmux_not_running');
+    assert.match(result.remediation, /open -a cmux/);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+    if (oldProc === undefined) delete process.env.TASKFORCE_CMUX_PROCESS_RUNNING;
+    else process.env.TASKFORCE_CMUX_PROCESS_RUNNING = oldProc;
+    delete process.env.FAKE_CMUX_SCENARIO;
+  }
+});
+
+test('discoverCmux classifies cmux_not_accessible when ping fails but process is alive', async () => {
+  const { discoverCmux } = await import(path.join(SCRIPTS, 'doctor.mjs'));
+  const oldBin = process.env.CMUX_BIN;
+  const oldProc = process.env.TASKFORCE_CMUX_PROCESS_RUNNING;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  process.env.FAKE_CMUX_SCENARIO = 'connection';
+  process.env.TASKFORCE_CMUX_PROCESS_RUNNING = '1';
+  try {
+    const result = discoverCmux();
+    assert.equal(result.installed, true);
+    assert.equal(result.ready, false);
+    assert.equal(result.classification, 'cmux_not_accessible');
+    assert.match(result.remediation, /Automation/);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+    if (oldProc === undefined) delete process.env.TASKFORCE_CMUX_PROCESS_RUNNING;
+    else process.env.TASKFORCE_CMUX_PROCESS_RUNNING = oldProc;
+    delete process.env.FAKE_CMUX_SCENARIO;
+  }
+});
