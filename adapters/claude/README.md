@@ -11,12 +11,12 @@ The Claude session acts as Chief. It runs the supervisor loop, dispatches work t
 
 ## Runtime Contract
 
-Each workflow node specifies `cli` and `model`; `model: null` means the
-selected CLI should use its default model. Task contracts define boundaries,
-validation, and completion criteria.
+Each workflow node specifies `cli`; `model` is optional and defaults to `null`,
+meaning the selected CLI starts on its own default model. Task contracts define
+boundaries, validation, and completion criteria.
 
-The adapter should discover model identifiers from the selected local CLI when
-that CLI exposes them, then ask the user to confirm the configuration. Agents
-launch as interactive TUIs. When a node's model is non-null, pass it using
-the selected CLI's supported TUI model argument; when it is null, omit model
-flags. Taskforce task prompts carry coding and review behavior.
+The adapter must not enumerate model identifiers or ask the user to choose one.
+Set a node's model only when the user supplied an exact model ID. Agents launch
+as interactive TUIs. When a node's model is non-null, pass it using the selected
+CLI's supported TUI model argument; when it is null, omit model flags.
+Taskforce task prompts carry coding and review behavior.

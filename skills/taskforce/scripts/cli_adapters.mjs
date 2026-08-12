@@ -4,6 +4,7 @@
 // initial prompt. Availability is checked separately with a PATH scan.
 
 import path from 'node:path';
+import { normalizeModel } from './protocol_lib.mjs';
 
 // Resolve a CLI name to its executable path. Handles path-qualified names.
 export function resolveCli(cli) {
@@ -81,7 +82,9 @@ export function getAdapter(cli) {
 }
 
 // Return the TUI launch command array for the given CLI, model, and prompt text.
+// The model is normalized first: only an explicit identifier produces a
+// --model flag, so an unspecified model launches the CLI on its own default.
 export function tuiLaunchCommand(cli, model, promptText) {
   const adapter = getAdapter(cli);
-  return adapter.tuiLaunchCommand(cli, model, promptText);
+  return adapter.tuiLaunchCommand(cli, normalizeModel(model), promptText);
 }

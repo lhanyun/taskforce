@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { parseArgs } from './protocol_lib.mjs';
+import { normalizeModel, parseArgs } from './protocol_lib.mjs';
 import { resolveCmuxPath } from './doctor.mjs';
 
 function run(command) {
@@ -52,6 +52,53 @@ function expandUser(p) {
   return p;
 }
 
+// Sanitize PATH for worker CLI processes.
+//
+// taskforce runs inside a host (e.g. WorkBuddy desktop) that may inject CLI-
+// specific shell shims (safe-bin/rm, safe-bin/unlink, ...) into PATH. These
+// shims require host-private env vars to function; without them they fail
+// closed and break worker startup (e.g. codebuddy's PluginManager file
+// cleanup is routed through such a shim and fails when the env is absent).
+//
+// Worker CLIs are CLI-agnostic execution units and must not inherit host
+// shim infrastructure. Remove any PATH entry whose rm/unlink/rmdir is a
+// `#!` script (a shim) rather than a native binary. Real system dirs
+// (/bin, /usr/bin, ...) hold native binaries and are always kept.
+const FALLBACK_WORKER_PATH = '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+
+function sanitizePathForWorker(rawPath) {
+  if (!rawPath) return FALLBACK_WORKER_PATH;
+  const SHIMMED_UTILITIES = ['rm', 'unlink', 'rmdir'];
+  const MAX_SHIM_SIZE = 4096; // shims are tiny shell scripts; real bins are larger
+  const sanitized = rawPath
+    .split(path.delimiter)
+    .filter((dir) => {
+      if (!dir) return true;
+      for (const util of SHIMMED_UTILITIES) {
+        const utilPath = path.join(dir, util);
+        try {
+          const stat = fs.statSync(utilPath);
+          if (!stat.isFile() || stat.size > MAX_SHIM_SIZE) continue;
+          // Detect shebang — a `#!` prefix marks a script shim.
+          const fd = fs.openSync(utilPath, 'r');
+          const buf = Buffer.alloc(2);
+          fs.readSync(fd, buf, 0, 2, 0);
+          fs.closeSync(fd);
+          if (buf.toString('utf8') === '#!') {
+            return false; // script shim — drop this directory
+          }
+        } catch {
+          // file missing or unreadable — keep checking other utilities
+        }
+      }
+      return true;
+    })
+    .join(path.delimiter);
+  // Every entry looking like a shim directory would leave the worker with no
+  // PATH at all, which breaks the launcher before the CLI even starts.
+  return sanitized || FALLBACK_WORKER_PATH;
+}
+
 export function main(argv) {
   const args = parseArgs(argv || process.argv.slice(2), {
     flags: ['execute'],
@@ -70,7 +117,7 @@ export function main(argv) {
   );
   const orchRel = args['orchestrator-dir'] || '.taskforce';
   const cli = String(args.cli || '').trim();
-  const model = args.model !== undefined ? args.model : null;
+  const model = normalizeModel(args.model);
   const workflowId = args['workflow-id'];
   const nodeId = args['node-id'];
 
@@ -111,11 +158,17 @@ export function main(argv) {
     ];
   if (model !== null) runnerCmd.push('--model', String(model));
   const runnerArray = shJoin(runnerCmd);
+  // Worker CLIs must run on a clean PATH: the host process may carry CLI-
+  // specific shims (e.g. safe-bin) that fail without host-private env vars.
+  // Strip any PATH directory whose rm/unlink/rmdir is a script shim, and
+  // fully override PATH (do not append the launcher shell's $PATH, which is
+  // the same polluted host environment).
+  const sanitizedPath = sanitizePathForWorker(process.env.PATH || '');
   const launcher =
       '#!/usr/bin/env bash\n' +
       'set -euo pipefail\n' +
-      `cd "${project}"\n` +
-      `export PATH="${process.env.PATH || ''}:$PATH"\n` +
+      `cd ${shQuote(project)}\n` +
+      `export PATH=${shQuote(sanitizedPath)}\n` +
       '# Step 1: Prepare protocol evidence and generate TUI exec snippet.\n' +
       `eval "$(${runnerArray})"\n` +
       '# Step 2: Source the TUI exec snippet to replace this shell with\n' +

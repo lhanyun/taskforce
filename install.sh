@@ -1,30 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- bootstrap: allow `curl ... | bash` remote invocation ---
-# When piped to bash, BASH_SOURCE[0] is empty and the script has no on-disk
-# location, so it cannot locate the bundled skills/ directory next to itself.
-# Fetch the repo tarball into a temp dir and re-exec the real install.sh
-# with all original arguments. Local `./install.sh` is unaffected.
-if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
-  for dep in curl tar; do
+# Resolve the directory holding this script, and with it the bundled skills/
+# tree that gets installed. It is empty under `curl … | bash` (the script has
+# no on-disk location) and points at /dev/fd under `bash <(curl …)`.
+SELF="${BASH_SOURCE[0]:-}"
+ROOT=""
+if [[ -n "$SELF" ]]; then
+  ROOT="$(cd "$(dirname "$SELF")" 2>/dev/null && pwd)" || ROOT=""
+fi
+
+# --- bootstrap: allow remote invocation without a clone ---
+# Trigger on the actual requirement — no bundled skills/ next to this script —
+# rather than on one specific invocation form. That covers `curl | bash`,
+# `bash <(curl …)`, and a stray copy of install.sh alike. Fetch the repo
+# tarball into a temp dir and run the real install.sh with the same arguments.
+if [[ ! -d "$ROOT/skills/taskforce" ]]; then
+  if [[ -n "${TASKFORCE_BOOTSTRAPPED:-}" ]]; then
+    echo "Downloaded archive is missing skills/taskforce; aborting instead of" >&2
+    echo "fetching it again. Check TASKFORCE_REPO/TASKFORCE_REF." >&2
+    exit 1
+  fi
+  for dep in curl tar mktemp; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       echo "Remote install requires '$dep' in PATH. Install it and re-run," >&2
       echo "or clone the repo and run ./install.sh directly." >&2
       exit 1
     fi
   done
-  REMOTE_TARBALL="https://github.com/lhanyun/taskforce/archive/refs/heads/main.tar.gz"
+  REMOTE_REPO="${TASKFORCE_REPO:-lhanyun/taskforce}"
+  REMOTE_REF="${TASKFORCE_REF:-main}"
+  REMOTE_TARBALL="https://github.com/$REMOTE_REPO/archive/refs/heads/$REMOTE_REF.tar.gz"
   BOOTSTRAP_TMP="$(mktemp -d)"
   trap 'rm -rf "$BOOTSTRAP_TMP"' EXIT
   echo "Fetching Taskforce from $REMOTE_TARBALL …" >&2
   curl -fsSL "$REMOTE_TARBALL" -o "$BOOTSTRAP_TMP/repo.tar.gz"
   tar -xzf "$BOOTSTRAP_TMP/repo.tar.gz" -C "$BOOTSTRAP_TMP"
-  exec bash "$BOOTSTRAP_TMP/taskforce-main/install.sh" "$@"
+  # The tarball's top-level directory is named after the repo and ref, which
+  # both vary with TASKFORCE_REPO/TASKFORCE_REF and with a renamed fork.
+  EXTRACTED=""
+  for candidate in "$BOOTSTRAP_TMP"/*/; do
+    if [[ -f "$candidate/install.sh" ]]; then EXTRACTED="$candidate"; break; fi
+  done
+  if [[ -z "$EXTRACTED" ]]; then
+    echo "Downloaded archive does not contain install.sh; check $REMOTE_REPO@$REMOTE_REF." >&2
+    exit 1
+  fi
+  # Run as a child rather than exec: exec would replace this process and the
+  # EXIT trap would never fire, leaking the extracted repo into the temp dir.
+  BOOTSTRAP_STATUS=0
+  TASKFORCE_BOOTSTRAPPED=1 bash "$EXTRACTED/install.sh" "$@" || BOOTSTRAP_STATUS=$?
+  exit "$BOOTSTRAP_STATUS"
 fi
 # --- end bootstrap ---
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT=""
 SCOPE="global"
 PROJECT_DIR="$PWD"
@@ -35,8 +64,11 @@ usage() {
 Usage: ./install.sh --agent cursor|codex|opencode|claude-code|workbuddy [--scope project|global]
                     [--project PATH] [--force]
 
-Copies the complete Taskforce skill. It does not configure project roles,
-select models, change cmux settings, or launch agents.
+Copies the complete Taskforce skill. It does not select models, change cmux
+settings, or launch agents.
+
+Remote install (curl … | bash) honors TASKFORCE_REPO and TASKFORCE_REF to
+install from a fork or a specific branch.
 EOF
 }
 
@@ -107,4 +139,4 @@ fi
 
 echo "Installed the complete Taskforce skill to $TARGET"
 echo "Next: reload your agent host and invoke Taskforce in a project."
-echo "First use will run doctor, role CLI/model confirmation, cmux checks, and preflight."
+echo "First use will scan PATH for supported worker CLIs and check cmux access."

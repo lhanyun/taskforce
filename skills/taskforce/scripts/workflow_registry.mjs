@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { appendJsonl, atomicWriteJson, nowIso, parseArgs, readJson, writeNodeState } from './protocol_lib.mjs';
+import { appendJsonl, atomicWriteJson, normalizeModel, nowIso, parseArgs, readJson, writeNodeState } from './protocol_lib.mjs';
 import { listAvailableClis, resolveCmuxPath } from './doctor.mjs';
 import { ensureCliAvailable, selectCli } from './cli_selector.mjs';
 
@@ -52,7 +52,7 @@ function resolveMissingNodeClis(nodes, options = {}) {
       errors.push(`node ${node.id || '(missing id)'}: ${selection.error}`);
       return node;
     }
-    return { ...node, cli: selection.cli, model: node.model ?? null };
+    return { ...node, cli: selection.cli, model: normalizeModel(node.model) };
   });
   return { nodes: resolved, errors, available: available.map((item) => typeof item === 'string' ? item : item.name) };
 }
@@ -100,7 +100,7 @@ function newNode(node) {
   return {
     id: node.id,
     cli: node.cli,
-    model: node.model ?? null,
+    model: normalizeModel(node.model),
     task: node.task || node.id,
     depends_on: node.depends_on || [],
     status: 'pending',
@@ -253,19 +253,19 @@ export function relaunchNode(orch, workflowId, nodeId, options = {}) {
   }
 
   let nextCli = node.cli;
-  let nextModel = node.model ?? null;
+  let nextModel = normalizeModel(node.model);
   if (String(options.cli || '').trim()) {
     const target = ensureCliAvailable(options.cli);
     if (!target.ok) return target;
     nextCli = target.name;
-    nextModel = options.model ?? null;
+    nextModel = normalizeModel(options.model);
   }
   const previous = {
     run_dir: node.run_dir || '',
     attempt_id: node.run_dir ? path.basename(node.run_dir) : '',
     cmux_surface: node.cmux_surface || '',
     cli: node.cli,
-    model: node.model ?? null,
+    model: normalizeModel(node.model),
   };
   const agentPid = readAgentPid(node.run_dir);
   const workerAlive = agentPid ? processIsAlive(agentPid) : Boolean(node.cmux_surface);
@@ -338,7 +338,9 @@ export function getObservableTaskIds(orch, workflowId) {
 
 export function workflowState(workflow) {
   const nodes = workflow.nodes || [];
-  if (!nodes.length) return 'running';
+  // A workflow with no nodes has nothing left to supervise. Reporting it as
+  // running would keep the supervisor waiting forever on an empty screen set.
+  if (!nodes.length) return 'completed';
   if (nodes.every((node) => node.status === 'cancelled')) return 'cancelled';
   if (nodes.every((node) => ['completed', 'cancelled'].includes(node.status))) return 'completed';
   if (nodes.some((node) => node.status === 'running')) return 'running';

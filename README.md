@@ -109,8 +109,10 @@ Worried about token spend? Taskforce is designed to run on cheap models.
   emits a short decision (`continue` / `send` / `relaunch` / `complete`). The
   per-tick payload is small, so a cheap model is enough — pick an inexpensive
   model in your host CLI session and let it supervise.
-- **Workers** accept a per-node `model`, so the heavy coding can run on a
-  capable model while review or scaffolding nodes use a cheaper one.
+- **Workers** accept an optional per-node `model`, so the heavy coding can run
+  on a capable model while review or scaffolding nodes use a cheaper one. Name
+  an exact model ID to use one; say nothing and the CLI starts on the default
+  model you already configured for it.
 
 A typical workflow: a cheap model supervises, a strong model writes code,
 a cheap model reviews. You stay in control of cost at every layer.
@@ -173,7 +175,9 @@ whole workflow.
 ```
 
 A description can include the CLI, task, ordering, completion conditions, and
-an exact model ID. No workflow JSON, profiles, or polling scripts required.
+optionally an exact model ID. Leave the model out and the worker CLI launches on
+its own default — Taskforce never picks one for you. No workflow JSON, profiles,
+or polling scripts required.
 
 ## How it works
 
