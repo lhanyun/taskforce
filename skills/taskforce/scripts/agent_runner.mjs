@@ -170,6 +170,11 @@ export function main(argv) {
     attempt_number: Number(workflowNode?.attempt_count || 1),
     recovery_context: recoveryContext,
     agent_pid_file: path.join(runPath, 'agent.pid'),
+    // The attempt directory has to identify its own surface. The node state
+    // file only ever describes the newest attempt, so it cannot be used to
+    // re-attach a supervisor to an earlier attempt that is still running.
+    cmux_workspace: process.env.CMUX_WORKSPACE_ID || '',
+    cmux_surface: process.env.CMUX_SURFACE_ID || '',
     started_at: startedAt,
   });
 

@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 // Minimal workflow registry for the runtime supervisor loop.
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { appendJsonl, atomicWriteJson, normalizeModel, nowIso, parseArgs, readJson, writeNodeState } from './protocol_lib.mjs';
+import {
+  appendJsonl,
+  atomicWriteJson,
+  normalizeModel,
+  nowIso,
+  parseArgs,
+  processIsAlive,
+  readAttemptPid as readAgentPid,
+  readJson,
+  writeNodeState,
+} from './protocol_lib.mjs';
 import { listAvailableClis, resolveCmuxPath } from './doctor.mjs';
 import { ensureCliAvailable, selectCli } from './cli_selector.mjs';
 
@@ -146,26 +155,6 @@ export function updateNode(orch, workflowId, nodeId, updates) {
   Object.assign(node, updates);
   workflow.updated_at = nowIso();
   return saveWorkflow(orch, workflow);
-}
-
-function readAgentPid(runDir) {
-  if (!runDir) return null;
-  try {
-    const value = Number(fs.readFileSync(path.join(runDir, 'agent.pid'), 'utf8').trim());
-    return Number.isInteger(value) && value > 1 ? value : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function processIsAlive(pid) {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (exc) {
-    return exc?.code === 'EPERM';
-  }
 }
 
 function waitForProcessExit(pid) {

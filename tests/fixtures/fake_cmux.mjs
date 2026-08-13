@@ -121,7 +121,7 @@ if (args.length > 0 && (args[0] === 'read-screen' || args[0] === 'capture-pane')
         '',
         '- /tmp/*',
         '',
-        'Allow once    Allow always    Reject',
+        '  Allow once    Allow always    > Reject',
         '',
       ].join('\n')
     );
@@ -143,7 +143,7 @@ if (args.length > 0 && (args[0] === 'read-screen' || args[0] === 'capture-pane')
         '',
         `- ${projectDir}/src/*`,
         '',
-        'Allow once    Allow always    Reject',
+        '> Allow once    Allow always      Reject',
         '',
       ].join('\n')
     );

@@ -470,6 +470,189 @@ test('supervisor tick never launches a replacement while the old worker is alive
   assert.equal(fs.existsSync(cmuxLog), false);
 });
 
+// The workflow file is Chief-authored. Re-writing it from a template — the
+// natural way to append a node — resets a running entry to pending, which
+// previously produced a second CLI for the same task and orphaned the first.
+function writeLiveAttempt(orch, attemptId, options = {}) {
+  const attempt = path.join(orch, 'runs', 'wf', 'node-a', attemptId);
+  fs.mkdirSync(attempt, { recursive: true });
+  fs.writeFileSync(path.join(attempt, 'agent.pid'), `${options.pid ?? process.pid}\n`);
+  fs.writeFileSync(path.join(attempt, 'launch.json'), JSON.stringify({
+    schema: 'taskforce.launch.v1',
+    workflow_id: 'wf',
+    node_id: 'node-a',
+    task_id: 'task-a',
+    attempt_id: attemptId,
+    attempt_number: 1,
+    cmux_surface: options.surface ?? 'surface-a',
+    cmux_workspace: '',
+    started_at: '2026-08-12T12:49:13.989000+00:00',
+  }));
+  return attempt;
+}
+
+function resetNodeToPending(orch) {
+  const workflowPath = path.join(orch, 'workflows', 'wf.json');
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  workflow.nodes[0] = {
+    ...workflow.nodes[0], status: 'pending', cmux_surface: '', run_dir: '', attempt_count: 0,
+  };
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+  return workflowPath;
+}
+
+test('a rewritten workflow entry adopts its live worker instead of launching a second CLI', () => {
+  const project = temp('tf-duplicate-launch-');
+  const orch = initWorkflow(project);
+  const cmuxLog = path.join(project, 'cmux.log');
+  const attempt = writeLiveAttempt(orch, '20260812T124913.987000+0000');
+
+  const workflowPath = resetNodeToPending(orch);
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  workflow.nodes.push({
+    id: 'node-b', task: 'task-a', cli: 'opencode', model: null, depends_on: ['node-a'],
+    status: 'pending', event: null, last_action: null, cmux_surface: '', run_dir: '', attempt_count: 0,
+  });
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+
+  const output = JSON.parse(execFileSync(process.execPath, [
+    path.join(SCRIPTS, 'supervisor_loop.mjs'), '--project-dir', project,
+    '--workflow-id', 'wf', '--once', '--json',
+  ], {
+    env: { ...process.env, CMUX_BIN: FAKE_CMUX, FAKE_CMUX_LOG: cmuxLog },
+    encoding: 'utf8',
+  }));
+
+  assert.equal(output.adoptions.length, 1);
+  assert.equal(output.adoptions[0].node_id, 'node-a');
+  assert.equal(output.adoptions[0].agent_pid, process.pid);
+  assert.deepEqual(output.launches, []);
+
+  const after = JSON.parse(fs.readFileSync(workflowPath)).nodes.find((node) => node.id === 'node-a');
+  assert.equal(after.status, 'running');
+  assert.equal(after.cmux_surface, 'surface-a');
+  assert.equal(after.run_dir, attempt);
+  assert.equal(after.attempt_count, 1);
+
+  const created = fs.existsSync(cmuxLog)
+    ? fs.readFileSync(cmuxLog, 'utf8').trim().split('\n').filter((line) => line.includes('workspace'))
+    : [];
+  assert.deepEqual(created, [], 'a live worker must never be given a second CLI');
+});
+
+test('the adopted node reports the recovered attempt to Chief', async () => {
+  const { rehydratePendingNodes } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-adopt-event-');
+  const orch = initWorkflow(project);
+  writeLiveAttempt(orch, '20260812T124913.987000+0000');
+  resetNodeToPending(orch);
+
+  assert.equal(rehydratePendingNodes(orch, 'wf').length, 1);
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(node.event.type, 'live_attempt_adopted');
+  assert.equal(node.event.agent_pid, process.pid);
+  assert.equal(node.event.attempt_id, '20260812T124913.987000+0000');
+  const state = JSON.parse(fs.readFileSync(path.join(orch, 'state', 'wf', 'node-a.json')));
+  assert.equal(state.status, 'running');
+  assert.equal(state.cmux_surface, 'surface-a');
+});
+
+test('an attempt written before launch.json carried the surface is adopted from node state', async () => {
+  const { adoptLiveAttempt } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-adopt-legacy-');
+  const orch = initWorkflow(project);
+  const attemptId = '20260812T124913.987000+0000';
+  writeLiveAttempt(orch, attemptId, { surface: '' });
+  const statePath = path.join(orch, 'state', 'wf', 'node-a.json');
+  const state = JSON.parse(fs.readFileSync(statePath));
+  fs.writeFileSync(statePath, JSON.stringify({ ...state, attempt_id: attemptId }));
+  resetNodeToPending(orch);
+
+  const pending = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(adoptLiveAttempt(orch, 'wf', pending).cmux_surface, 'surface-a');
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(node.status, 'running');
+  assert.equal(node.cmux_surface, 'surface-a');
+  assert.equal(node.launch_phase, null);
+});
+
+test('an adopted worker with no discoverable surface is reported instead of duplicated', async () => {
+  const { adoptLiveAttempt } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-adopt-blind-');
+  const orch = initWorkflow(project);
+  writeLiveAttempt(orch, '20260812T124913.987000+0000', { surface: '' });
+  const statePath = path.join(orch, 'state', 'wf', 'node-a.json');
+  const state = JSON.parse(fs.readFileSync(statePath));
+  fs.writeFileSync(statePath, JSON.stringify({ ...state, attempt_id: 'some-other-attempt', cmux_surface: '' }));
+  resetNodeToPending(orch);
+
+  const pending = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(adoptLiveAttempt(orch, 'wf', pending).cmux_surface, '');
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(node.status, 'running');
+  assert.match(node.event.diagnostic, /cmux surface is unknown/);
+});
+
+test('launching refuses a second worker while an earlier attempt is still alive', async () => {
+  const { launchReadyNodes } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const project = temp('tf-launch-guard-');
+  const orch = initWorkflow(project, 'wf', 'pending');
+  const attempt = writeLiveAttempt(orch, '20260812T124913.987000+0000');
+  const cmuxLog = path.join(project, 'cmux.log');
+  const oldBin = process.env.CMUX_BIN;
+  const oldLog = process.env.FAKE_CMUX_LOG;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  process.env.FAKE_CMUX_LOG = cmuxLog;
+  let results;
+  try {
+    results = launchReadyNodes(orch, project, 'wf', path.join(ROOT, 'skills', 'taskforce'));
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+    if (oldLog === undefined) delete process.env.FAKE_CMUX_LOG; else process.env.FAKE_CMUX_LOG = oldLog;
+  }
+  assert.equal(results.length, 1);
+  assert.equal(results[0].launched, false);
+  assert.equal(results[0].error, 'live_attempt_adopted');
+  assert.equal(results[0].event_type, 'duplicate_launch_blocked');
+  assert.equal(results[0].agent_pid, process.pid);
+  assert.equal(results[0].attempt_id, '20260812T124913.987000+0000');
+  assert.equal(fs.existsSync(cmuxLog), false);
+  assert.equal(fs.readdirSync(path.join(orch, 'runs', 'wf', 'node-a')).length, 1);
+  assert.equal(attempt.endsWith('20260812T124913.987000+0000'), true);
+});
+
+test('adoption never claims a node whose recorded attempt has already exited', async () => {
+  const { adoptLiveAttempt } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-adopt-dead-');
+  const orch = initWorkflow(project, 'wf', 'pending');
+  writeLiveAttempt(orch, '20260812T124913.987000+0000', { pid: 2147483647 });
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(adoptLiveAttempt(orch, 'wf', node), null);
+  assert.equal(loadWorkflow(orch, 'wf').nodes[0].status, 'pending');
+});
+
+test('a relaunched node is launchable again once its worker is gone', async () => {
+  const { rehydratePendingNodes } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { relaunchNode, loadWorkflow, updateNode } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-relaunch-adopt-');
+  const orch = initWorkflow(project);
+  const attempt = writeLiveAttempt(orch, '20260812T124913.987000+0000', { pid: 2147483647 });
+  updateNode(orch, 'wf', 'node-a', { run_dir: attempt });
+  const oldBin = process.env.CMUX_BIN;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  try {
+    assert.equal(relaunchNode(orch, 'wf', 'node-a', { instruction: 'Try a different approach' }).ok, true);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+  }
+  assert.deepEqual(rehydratePendingNodes(orch, 'wf'), []);
+  assert.equal(loadWorkflow(orch, 'wf').nodes[0].status, 'pending');
+});
+
 test('workflow uses only four factual lifecycle states', async () => {
   const { NODE_STATUSES } = await import(path.join(SCRIPTS, 'protocol_lib.mjs'));
   assert.deepEqual([...NODE_STATUSES], ['pending', 'running', 'completed', 'cancelled']);
@@ -606,6 +789,8 @@ test('agent runner records launch progress as metadata while status stays runnin
   const runPath = state.run_dir;
   const launch = JSON.parse(fs.readFileSync(path.join(runPath, 'launch.json')));
   assert.equal(launch.agent_pid_file, path.join(runPath, 'agent.pid'));
+  assert.equal(launch.cmux_surface, 'surface-a');
+  assert.equal(launch.cmux_workspace, 'workspace-a');
   const tuiExec = fs.readFileSync(path.join(runPath, 'tui_exec.sh'), 'utf8');
   assert.match(tuiExec, /printf '%s\\n' "\$\$"/);
   assert.match(tuiExec, /agent\.pid/);
@@ -856,11 +1041,21 @@ test('Chief answers a permission menu in-place without relaunching the node', ()
   const project = temp('tf-permission-');
   const orch = initWorkflow(project);
   const log = path.join(project, 'cmux.log');
-  const env = { ...process.env, CMUX_BIN: FAKE_CMUX, FAKE_CMUX_LOG: log, FAKE_CMUX_SCENARIO: 'permission' };
+  const env = {
+    ...process.env,
+    CMUX_BIN: FAKE_CMUX,
+    FAKE_CMUX_LOG: log,
+    FAKE_CMUX_SCENARIO: 'permission-project',
+    FAKE_CMUX_PROJECT_DIR: project,
+  };
   const script = path.join(SCRIPTS, 'supervisor_loop.mjs');
   const argv = [script, '--project-dir', project, '--workflow-id', 'wf', '--once', '--json'];
   const first = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
   assert.match(first.observations[0].current_screen, /Permission required/);
+  assert.equal(first.observations[0].current_screen.includes(`${project}/src`), true);
+  assert.match(first.observations[0].current_screen, /> Allow once/);
+  assert.match(first.chief_instruction, /send enter immediately/i);
+  assert.match(first.chief_instruction, /--auto/);
   const decisionDir = path.join(orch, 'state', 'workflows', 'wf');
   fs.writeFileSync(path.join(decisionDir, 'latest_decision_batch.json'), JSON.stringify({
     batch_id: first.batch_id, workflow_id: 'wf', decisions: [{
@@ -878,8 +1073,138 @@ test('Chief answers a permission menu in-place without relaunching the node', ()
   assert.equal(followup.observations[0].send_effect, 'screen_unchanged');
   const node = JSON.parse(fs.readFileSync(path.join(orch, 'workflows', 'wf.json'))).nodes[0];
   assert.equal(node.status, 'running');
+  assert.equal(node.last_action.dispatch_ok, true);
+  assert.equal(node.last_action.dispatch_status, 'input_delivered');
   assert.equal(node.attempt_count, 1);
   assert.equal(node.cmux_surface, 'surface-a');
+});
+
+test('a stale permission decision is a failed send, not a post-send confirmation', () => {
+  const project = temp('tf-permission-stale-');
+  const orch = initWorkflow(project);
+  const log = path.join(project, 'cmux.log');
+  const surfacesFile = path.join(project, 'surfaces.json');
+  const firstScreen = 'Permission required\n> Allow once\n  Reject';
+  const changedScreen = 'Permission required\n  Allow once\n> Reject';
+  fs.writeFileSync(surfacesFile, JSON.stringify({ 'surface-a': { text: firstScreen } }));
+  const env = {
+    ...process.env,
+    CMUX_BIN: FAKE_CMUX,
+    FAKE_CMUX_LOG: log,
+    FAKE_CMUX_SURFACES_FILE: surfacesFile,
+  };
+  const script = path.join(SCRIPTS, 'supervisor_loop.mjs');
+  const argv = [script, '--project-dir', project, '--workflow-id', 'wf', '--once', '--json'];
+  const first = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
+  const decisionDir = path.join(orch, 'state', 'workflows', 'wf');
+  fs.writeFileSync(path.join(decisionDir, 'latest_decision_batch.json'), JSON.stringify({
+    batch_id: first.batch_id,
+    workflow_id: 'wf',
+    decisions: [{
+      node_id: 'node-a',
+      action: 'send',
+      key: 'enter',
+      reason: 'Approve the reviewed option',
+      expected_screen_hash: first.observations[0].screen_hash,
+    }],
+  }));
+  fs.writeFileSync(surfacesFile, JSON.stringify({ 'surface-a': { text: changedScreen } }));
+
+  const followup = JSON.parse(execFileSync(process.execPath, argv, { env, encoding: 'utf8' }));
+  const node = JSON.parse(fs.readFileSync(path.join(orch, 'workflows', 'wf.json'))).nodes[0];
+  assert.equal(node.last_action.dispatch_ok, false);
+  assert.equal(node.last_action.dispatch_status, 'stale_screen');
+  assert.equal(node.event.type, 'send_failed');
+  assert.equal(node.event.status, 'stale_screen');
+  assert.notEqual(followup.observations[0].review_reason, 'post_send_confirmation');
+  assert.equal('send_effect' in followup.observations[0], false);
+  assert.equal(fs.existsSync(log), false, 'stale permission decision must send no terminal input');
+});
+
+test('a visible permission menu cannot be bypassed by relaunching its live worker', async () => {
+  const { processDecisionBatch } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const project = temp('tf-permission-relaunch-');
+  const orch = initWorkflow(project);
+  const result = processDecisionBatch({
+    batch_id: 'obs-permission',
+    workflow_id: 'wf',
+    decisions: [{
+      node_id: 'node-a',
+      action: 'relaunch',
+      reason: 'Attempt to restart with permission bypass flags',
+      instruction: 'Use --auto',
+    }],
+  }, {}, orch, 'wf', [{
+    node_id: 'node-a',
+    screen_hash: 'permission-screen',
+    current_screen: 'Permission required\n> Allow once\n  Reject',
+  }]);
+
+  assert.equal(result.relaunchResults[0].ok, false);
+  assert.equal(result.relaunchResults[0].status, 'worker_liveness_unknown');
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(node.status, 'running');
+  assert.equal(node.cmux_surface, 'surface-a');
+  assert.equal(node.attempt_count, 1);
+  assert.equal(node.event.type, 'relaunch_rejected');
+});
+
+test('a permission key does not archive worker questions, but a text reply does', async () => {
+  const { processDecisionBatch } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { hashScreen } = await import(path.join(SCRIPTS, 'surface_collector.mjs'));
+  const project = temp('tf-question-addressing-');
+  const orch = initWorkflow(project);
+  const runDir = path.join(orch, 'runs', 'wf', 'node-a', 'attempt-1');
+  fs.mkdirSync(runDir, { recursive: true });
+  const questionsPath = path.join(runDir, 'questions.json');
+  fs.writeFileSync(questionsPath, JSON.stringify({ questions: ['Which API should I use?'] }));
+  const workflowPath = path.join(orch, 'workflows', 'wf.json');
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  workflow.nodes[0].run_dir = runDir;
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+  const oldBin = process.env.CMUX_BIN;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  const screenHash = hashScreen('agent is still working\n');
+  const surfaceMap = {
+    'node-a': {
+      workflow_id: 'wf',
+      node_id: 'node-a',
+      task_id: 'task-a',
+      cmux_surface: 'surface-a',
+      run_dir: runDir,
+    },
+  };
+  try {
+    processDecisionBatch({
+      batch_id: 'obs-key',
+      workflow_id: 'wf',
+      decisions: [{
+        node_id: 'node-a',
+        action: 'send',
+        key: 'enter',
+        expected_screen_hash: screenHash,
+      }],
+    }, surfaceMap, orch, 'wf', [{ node_id: 'node-a', screen_hash: screenHash }]);
+    assert.equal(fs.existsSync(questionsPath), true);
+    assert.equal(fs.existsSync(`${questionsPath}.addressed`), false);
+
+    processDecisionBatch({
+      batch_id: 'obs-text',
+      workflow_id: 'wf',
+      decisions: [{
+        node_id: 'node-a',
+        action: 'send',
+        input: 'Use the existing public API.',
+        submit: true,
+        expected_screen_hash: screenHash,
+      }],
+    }, surfaceMap, orch, 'wf', [{ node_id: 'node-a', screen_hash: screenHash }]);
+    assert.equal(fs.existsSync(questionsPath), false);
+    assert.equal(fs.existsSync(`${questionsPath}.addressed`), true);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+  }
 });
 
 test('one CLI exit is isolated from another running node', async () => {

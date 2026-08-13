@@ -6,6 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 
 // v0.2 node lifecycle states.
 // Four factual lifecycle states. Waiting menus, questions, failures, and
@@ -93,6 +94,63 @@ export function normalizeModel(value) {
   const text = String(value).trim();
   if (DEFAULT_MODEL_ALIASES.has(text.toLowerCase())) return null;
   return text;
+}
+
+// The worker's OS process is the ground truth for "this attempt is still live".
+// agent.pid is written by tui_exec.sh, which then execs the CLI into the same
+// process, so the pid stays valid for the CLI's whole lifetime.
+export function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (exc) {
+    return exc?.code === 'EPERM';
+  }
+}
+
+export function readAttemptPid(runDir) {
+  if (!runDir) return null;
+  try {
+    const value = Number(fs.readFileSync(path.join(runDir, 'agent.pid'), 'utf8').trim());
+    return Number.isInteger(value) && value > 1 ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Attempt directories are the durable record of every launch. Scanning them is
+// the only way to find a live worker whose workflow entry was rewritten or
+// whose node state file was already overwritten by a later attempt. Attempt ids
+// are UTC timestamps, so reverse lexicographic order is newest first.
+export function findLiveAttempt(orch, workflowId, nodeId) {
+  const nodeRuns = path.join(orch, 'runs', workflowId, nodeId);
+  let attemptIds = [];
+  try {
+    attemptIds = fs.readdirSync(nodeRuns, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+  } catch (_) {
+    return null;
+  }
+  for (const attemptId of attemptIds) {
+    const runDir = path.join(nodeRuns, attemptId);
+    const agentPid = readAttemptPid(runDir);
+    if (!processIsAlive(agentPid)) continue;
+    const launch = readJson(path.join(runDir, 'launch.json'));
+    return {
+      attempt_id: attemptId,
+      run_dir: runDir,
+      agent_pid: agentPid,
+      cmux_surface: String(launch.cmux_surface || ''),
+      cmux_workspace: String(launch.cmux_workspace || ''),
+      attempt_number: Number(launch.attempt_number || 0) || null,
+      started_at: launch.started_at || null,
+    };
+  }
+  return null;
 }
 
 export function slug(value) {
