@@ -209,6 +209,12 @@ Chief owns permission judgment:
 - inspect the visible command, requested scope, and risk before choosing an
   explicit menu action; never approve from keywords or the default selection
   alone;
+- after that inspection, send `enter` immediately when the intended safe option
+  is already highlighted; otherwise send exactly one navigation key and verify
+  the next screen;
+- treat a visible permission menu as an in-place interaction with the current
+  worker; never investigate permission-bypass launch flags (including
+  `--auto`), launcher changes, or relaunch logic to answer it;
 - reject or ask the user for credentials, product authority, dangerous or
   irreversible operations, system/global access, or external commitments.
 
@@ -229,6 +235,23 @@ and surface.
 
 There is no hard retry counter or blocked prerequisite. Chief owns the judgment.
 Task splitting remains explicit workflow planning, not a runtime action.
+
+## One worker per node
+
+A node never gets a second CLI while its current one is alive. Every tick
+reconciles the workflow entries against the worker processes recorded under
+`runs/<workflow-id>/<node-id>/<attempt-id>/agent.pid` before reading status, and
+the launcher re-checks immediately before spawning.
+
+This matters because the workflow file is Chief-authored. Rewriting it — the
+natural way to append a node — resets a running entry to `pending`, which
+otherwise reads as “launch me”. Instead the runtime adopts the live attempt,
+restores `status`, `cmux_surface`, `run_dir`, and `attempt_count` from it, and
+reports a `live_attempt_adopted` event. A launch blocked at the last gate
+reports `duplicate_launch_blocked`. Both are facts for the next review, not
+lifecycle changes: the adopted worker stays observable and its permission menus
+stay answerable. Prefer appending to the workflow file over rewriting it, but
+neither can strand a worker.
 
 ## Completion
 

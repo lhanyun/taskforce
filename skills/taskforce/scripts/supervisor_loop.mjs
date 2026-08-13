@@ -29,7 +29,18 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { parseArgs, nowIso, atomicWriteJson, appendJsonl, normalizeModel, readJson, writeNodeState } from './protocol_lib.mjs';
+import {
+  parseArgs,
+  nowIso,
+  atomicWriteJson,
+  appendJsonl,
+  findLiveAttempt,
+  nodeStatePath,
+  normalizeModel,
+  processIsAlive,
+  readJson,
+  writeNodeState,
+} from './protocol_lib.mjs';
 import { collectAllSurfaces, collectSurfaces, readCmuxScreen } from './surface_collector.mjs';
 import { resolveCmuxPath } from './doctor.mjs';
 import { parseDecisionBatch, classifyDecisions } from './decision_batch.mjs';
@@ -59,7 +70,9 @@ const SCREEN_REVIEW_INSTRUCTION =
   'Use send only for a visible input request, concrete goal or boundary drift, or an explicit failure that cannot proceed without guidance. ' +
   'Chief owns permission judgment. For a TUI menu, inspect the current highlight and send exactly one official key ' +
   '(up, down, left, right, enter, tab, escape, backspace, or delete) with expected_screen_hash; never type a displayed option number unless the TUI explicitly names it as a shortcut. ' +
-  'After a navigation key, re-read the screen and confirm the new highlight before sending enter. Use input only for text. ' +
+  'After checking the visible command, scope, risk, and highlight, send enter immediately if the intended safe option is already highlighted; otherwise send one navigation key. ' +
+  'After navigation, re-read the screen and confirm the new highlight before sending enter. Use input only for text. ' +
+  'A visible permission menu is an in-place interaction with the current worker: do not inspect permission-bypass launch flags such as --auto, launcher changes, or relaunch logic to answer it. ' +
   'Ask the user outside the runtime only for credentials, product authority, dangerous or irreversible permission; keep the node running meanwhile. ' +
   'Never relaunch a live worker; relaunch is available only after its process has already exited. ' +
   'Return one action per active node: continue, send, relaunch, or complete.';
@@ -169,16 +182,6 @@ function quietRemove(filePath) {
     // Fall back to direct unlink if rename fails (e.g. cross-device). This may
     // trigger safe-delete on some hosts, but only in the rare fallback path.
     try { fs.unlinkSync(filePath); } catch (_) { /* best effort */ }
-  }
-}
-
-function processIsAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 1) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (exc) {
-    return exc?.code === 'EPERM';
   }
 }
 
@@ -338,6 +341,69 @@ export function detectEvents(orch, workflowId) {
 // Node launch
 // ---------------------------------------------------------------------------
 
+// Re-attach a node entry to an attempt whose worker is still running.
+//
+// The workflow file is Chief-authored plain JSON. Rewriting it — appending a
+// node, re-emitting the plan from a template — resets a running entry back to
+// pending with attempt_count 0, which makes the node look launchable again.
+// Launching then produces a second CLI for the same task and strands the first
+// one: nothing references its surface any more, so it can never be observed and
+// its permission menus can never be answered.
+//
+// Adoption restores the entry from the live attempt instead. Returns the
+// adopted attempt, or null when the node genuinely has no worker.
+export function adoptLiveAttempt(orch, workflowId, node) {
+  const live = findLiveAttempt(orch, workflowId, node.id);
+  if (!live) return null;
+
+  // Attempts launched before launch.json carried the surface fall back to the
+  // node state file, which is only authoritative for its own attempt.
+  const state = readJson(nodeStatePath(orch, workflowId, node.id));
+  const surface = live.cmux_surface
+    || (state.attempt_id === live.attempt_id ? String(state.cmux_surface || '') : '');
+
+  const adopted = { ...live, cmux_surface: surface };
+  updateNode(orch, workflowId, node.id, {
+    status: 'running',
+    run_dir: live.run_dir,
+    cmux_surface: surface,
+    launch_phase: surface ? null : 'creating_surface',
+    launched_at: live.started_at || node.launched_at || nowIso(),
+    attempt_count: Math.max(Number(node.attempt_count || 0), live.attempt_number || 1),
+    event: {
+      type: 'live_attempt_adopted',
+      attempt_id: live.attempt_id,
+      run_dir: live.run_dir,
+      agent_pid: live.agent_pid,
+      cmux_surface: surface,
+      diagnostic: surface
+        ? 'The workflow entry was pending while this attempt was still running. The node was restored to running instead of launching a duplicate worker.'
+        : 'The workflow entry was pending while this attempt was still running, but its cmux surface is unknown, so the worker cannot be observed or sent input. Decide whether to keep waiting or to relaunch once the process exits.',
+      requires_decision: false,
+    },
+  });
+  writeNodeState(orch, workflowId, node.id, {
+    status: 'running',
+    run_dir: live.run_dir,
+    ...(surface ? { cmux_surface: surface } : {}),
+  });
+  return adopted;
+}
+
+// Runtime reconciliation before anything else in a tick: a pending entry that
+// still owns a live worker is a bookkeeping error, not a node awaiting launch.
+export function rehydratePendingNodes(orch, workflowId) {
+  const workflow = loadWorkflow(orch, workflowId);
+  if (!workflow.workflow_id) return [];
+  const adopted = [];
+  for (const node of workflow.nodes) {
+    if (node.status !== 'pending') continue;
+    const live = adoptLiveAttempt(orch, workflowId, node);
+    if (live) adopted.push({ node_id: node.id, task: node.task, ...live });
+  }
+  return adopted;
+}
+
 // Launch ready nodes directly through the cmux terminal launcher.
 // v0.2: uses node.cli and node.model, no --role.
 // running covers the supervised attempt; launch_phase records surface startup.
@@ -345,6 +411,25 @@ export function launchReadyNodes(orch, project, workflowId, skillDir) {
   const ready = getReadyNodes(orch, workflowId);
   const results = [];
   for (const node of ready) {
+    // Last gate before spawning: never put two workers on one node. Whatever
+    // reset the entry to pending — a rewritten workflow file, a second
+    // supervisor, a relaunch racing an exit — the live process wins and the
+    // entry is repaired to point at it.
+    const adopted = adoptLiveAttempt(orch, workflowId, node);
+    if (adopted) {
+      results.push({
+        node_id: node.id,
+        task: node.task,
+        launched: false,
+        error: 'live_attempt_adopted',
+        event_type: 'duplicate_launch_blocked',
+        attempt_id: adopted.attempt_id,
+        agent_pid: adopted.agent_pid,
+        diagnostic: `attempt ${adopted.attempt_id} is still running as pid ${adopted.agent_pid}`,
+      });
+      continue;
+    }
+
     const cliAvailability = ensureCliAvailable(node.cli);
     if (!cliAvailability.ok) {
       updateNode(orch, workflowId, node.id, {
@@ -450,7 +535,7 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
   const parsed = parseDecisionBatch(chiefOutput, expectedNodeIds);
   const appliedAt = nowIso();
   const decidedAt = chiefOutput?.decided_at || appliedAt;
-  const decisionSnapshot = (decision) => ({
+  const decisionSnapshot = (decision, dispatchResult = null) => ({
     action: decision.action,
     reason: decision.reason || '',
     ...(decision.action === 'send' ? {
@@ -458,6 +543,8 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
         ? { input: decision.input, submit: decision.submit }
         : { key: decision.key }),
       expected_screen_hash: decision.expected_screen_hash,
+      dispatch_ok: dispatchResult?.ok === true,
+      dispatch_status: dispatchResult?.status || 'unknown',
     } : {}),
     ...(decision.instruction ? { instruction: decision.instruction } : {}),
     ...(decision.cli ? { cli: decision.cli, model: decision.model ?? null } : {}),
@@ -517,15 +604,18 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
       if (!node) continue;
       const dr = dispatchByNode[d.node_id];
       if (dr?.ok === true) {
-        updateNode(orch, workflowId, node.id, { last_action: decisionSnapshot(d), event: null });
-        if (node.run_dir) {
+        updateNode(orch, workflowId, node.id, { last_action: decisionSnapshot(d, dr), event: null });
+        // A TUI key answers a menu; it does not answer a worker-authored
+        // questions.json artifact. Only a successfully delivered text response
+        // can mark that artifact as addressed.
+        if (d.input !== undefined && node.run_dir) {
           const question = path.join(node.run_dir, 'questions.json');
           if (fs.existsSync(question)) {
             try { fs.renameSync(question, path.join(node.run_dir, 'questions.json.addressed')); } catch (_) { /* best effort */ }
           }
         }
       } else {
-        updateNode(orch, workflowId, node.id, { last_action: decisionSnapshot(d),
+        updateNode(orch, workflowId, node.id, { last_action: decisionSnapshot(d, dr),
           event: { type: 'send_failed', status: dr?.status || 'unknown' } });
       }
     }
@@ -695,7 +785,11 @@ export function collectCycle(orch, workflowId, buffer, reviewIntervalSeconds = 1
     const node = nodes.get(nodeKey);
     const lastAction = node?.last_action || null;
     const periodicReviewDue = reviewIntervalElapsed(lastAction, reviewIntervalSeconds);
-    const postSend = lastAction?.action === 'send';
+    // Only an input accepted by cmux earns a post-send confirmation. A stale
+    // screen or transport failure sends nothing and is surfaced through the
+    // node's send_failed event instead; calling it post-send would invite a
+    // duplicate Enter on the next review.
+    const postSend = lastAction?.action === 'send' && lastAction?.dispatch_ok === true;
     const needsFollowup = postSend || periodicReviewDue || Boolean(node?.event);
     if (!surface.changed && !existing && !needsFollowup) continue;
     if (existing) {
@@ -951,6 +1045,12 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
   const buffer = { observations: [] };
   let decisionResult = { processed: false };
 
+  // 0. Reconcile the workflow entries with the workers that are actually
+  // running, before anything reads node status. Adoption records the fact on
+  // the node itself, so it still reaches Chief when this tick returns early
+  // with an unconsumed batch.
+  const adoptions = rehydratePendingNodes(orch, workflowId);
+
   // 1. Consume the decision for the PREVIOUS persisted observation before
   // collecting a new screen. This preserves strict batch binding across
   // independent --once invocations.
@@ -993,6 +1093,7 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
       observations: previousBatch.observations || [],
       events_detected: 0,
       launches: [],
+      adoptions,
     };
   }
 
@@ -1040,7 +1141,7 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
       const event = {
         node_id: launch.node_id,
         task: launch.task,
-        type: 'launch_failed',
+        type: launch.event_type || 'launch_failed',
         error: launch.error,
         diagnostic: launch.diagnostic || '',
         requires_decision: true,
@@ -1075,6 +1176,7 @@ export function supervisorTick({ orch, project, workflowId, skillDir, reviewInte
     observations: batch?.observations || [],
     events_detected: events.length,
     launches: launchResults,
+    adoptions,
   };
 }
 

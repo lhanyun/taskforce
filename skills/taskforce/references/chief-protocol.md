@@ -44,14 +44,27 @@ or external commitments require the user, ask outside the runtime and return
 
 For a permission menu, inspect the visible command, requested scope, risk, and
 current highlight. Menu numbers are labels unless explicitly documented as
-shortcuts. Send one navigation key, re-read and verify the new highlight, then
-send `enter` against the new screen hash. Never approve solely because a keyword
-is present or the default menu item is selected.
+shortcuts. Once the inspection is complete, send `enter` immediately if the
+intended safe option is already highlighted; otherwise send one navigation key,
+re-read and verify the new highlight, then send `enter` against the new screen
+hash. Never approve solely because a keyword is present or the default menu item
+is selected. A visible permission menu is an in-place interaction with the
+current worker: do not inspect permission-bypass launch flags (including
+`--auto`), launcher changes, or relaunch logic to answer it.
 
 Never use `relaunch` while the worker PID is alive or its liveness is unknown.
 Slow Thinking, delayed file output, unchanged screens, streaming output, and
 `stale_screen` do not justify replacing a live worker. Runtime accepts relaunch
 only after the worker has already exited, preserving live context by default.
+
+A node never runs two CLIs at once. Before reading node status and again before
+spawning, runtime reconciles the workflow entries against the recorded worker
+processes. A `pending` entry that still owns a live worker is adopted back to
+`running` with its surface and attempt restored, reported as
+`live_attempt_adopted`; a launch stopped at the last gate reports
+`duplicate_launch_blocked`. Treat both as observation facts and review the
+adopted worker's screen — it is frequently waiting on a permission menu that
+went unanswered while its entry was unsupervised.
 Completion claims require goal and implementation review. Artifacts and process
 exit are evidence only and cannot terminate supervision without Chief's
 verified `complete` decision.

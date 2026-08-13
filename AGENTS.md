@@ -14,7 +14,10 @@ You are the Chief. You run the supervisor loop and make decisions about workflow
    `model` is optional and defaults to `null`. Set it only to an exact model ID
    the user gave you. Never infer, discover, or pick a model yourself: with
    `model: null` no `--model` flag is passed and the CLI starts on its own
-   configured default.
+   configured default. Append to this file rather than rewriting it while nodes
+   are running; a rewrite resets running entries to `pending`. The runtime
+   adopts the live worker instead of launching a duplicate and reports
+   `live_attempt_adopted`, but the entry is easier to read when it is never reset.
 4. Repeatedly run one short supervisor tick: collect surfaces → Chief reviews every current tail → dispatch decisions.
 5. Loop until all nodes reach a terminal state (`completed` or `cancelled`).
 
@@ -55,7 +58,12 @@ are not text shortcuts unless the screen explicitly says so. Use `send` with
 one official `key` (`up`, `down`, `left`, `right`, `enter`, `tab`, `escape`,
 `backspace`, or `delete`) bound to `expected_screen_hash`; after navigation,
 read the new screen and confirm its highlight before sending `enter`. Use
-`input` only for text. The existence of `result.json`, validation output,
+`input` only for text. Once that inspection is complete, use the permission
+fast path: if the intended safe option is already highlighted, send `enter`
+immediately; otherwise send exactly one navigation key. A visible permission
+menu is an in-place interaction with the current worker: do not inspect
+permission-bypass launch flags (including `--auto`), launcher changes, or
+relaunch logic to answer it. The existence of `result.json`, validation output,
 or a stopped CLI never ends supervision by itself; only Chief's verified
 `complete` decision does.
 If an invocation reports `supervisor_already_running`, keep the existing wait;
