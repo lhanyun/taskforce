@@ -38,10 +38,11 @@ import {
   nodeStatePath,
   normalizeModel,
   processIsAlive,
+  readAttemptPid,
   readJson,
   writeNodeState,
 } from './protocol_lib.mjs';
-import { collectAllSurfaces, collectSurfaces, readCmuxScreen } from './surface_collector.mjs';
+import { collectAllSurfaces, collectSurfaces, hashScreen, readCmuxScreen } from './surface_collector.mjs';
 import { resolveCmuxPath } from './doctor.mjs';
 import { parseDecisionBatch, classifyDecisions } from './decision_batch.mjs';
 import { dispatchBatch } from './intervention_dispatcher.mjs';
@@ -75,6 +76,7 @@ const SCREEN_REVIEW_INSTRUCTION =
   'A visible permission menu is an in-place interaction with the current worker: do not inspect permission-bypass launch flags such as --auto, launcher changes, or relaunch logic to answer it. ' +
   'Ask the user outside the runtime only for credentials, product authority, dangerous or irreversible permission; keep the node running meanwhile. ' +
   'Never relaunch a live worker; relaunch is available only after its process has already exited. ' +
+  'Do not return complete while the CLI visibly waits for permission or confirmation; answer it with send first. ' +
   'Return one action per active node: continue, send, relaunch, or complete.';
 const HOST_REVIEW_INSTRUCTION =
   'Review every included node now, write the batch-bound decision, and immediately start the next --wait. ' +
@@ -584,19 +586,69 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
   const classified = classifyDecisions(parsed);
   const dispatchResults = dispatchBatch(classified.sends, nodeSurfaceMap, orch);
   const dispatchByNode = Object.fromEntries(dispatchResults.map((result) => [result.node_id, result]));
+  const completeResults = [];
 
   const workflow = loadWorkflow(orch, workflowId);
   if (workflow.workflow_id) {
     for (const d of classified.completions) {
       const node = workflow.nodes.find((candidate) => candidate.id === d.node_id);
-      if (node) {
-        updateNode(orch, workflowId, node.id, {
-          status: 'completed',
-          event: { type: 'completed', reason: d.reason || '' },
-          last_action: decisionSnapshot(d),
-        });
-        writeNodeState(orch, workflowId, node.id, { status: 'completed' });
+      if (!node) {
+        completeResults.push({ ok: false, action: 'complete', error: 'node_not_found', node_id: d.node_id });
+        continue;
       }
+      const observedScreen = observed.find((item) => item && item.node_id === node.id);
+      const expectedHash = String(observedScreen?.screen_hash || '');
+      const surface = node.cmux_surface || nodeSurfaceMap[node.id]?.cmux_surface || '';
+      const agentPid = readAttemptPid(node.run_dir);
+      let screenCheck = { ok: true, status: 'unchanged' };
+      if (surface && (!agentPid || processIsAlive(agentPid))) {
+        const current = readCmuxScreen(surface);
+        if (!current.ok) {
+          screenCheck = { ok: false, status: 'screen_unreadable' };
+        } else {
+          const actualHash = hashScreen(current.text);
+          if (!expectedHash || actualHash !== expectedHash) {
+            screenCheck = {
+              ok: false,
+              status: 'stale_screen',
+              expected_screen_hash: expectedHash,
+              actual_screen_hash: actualHash,
+            };
+          }
+        }
+      }
+      if (!screenCheck.ok) {
+        // Leave the worker running and surface the fresh-screen failure on the
+        // next review. The runtime does not interpret or answer the new screen.
+        updateNode(orch, workflowId, node.id, {
+          last_action: decisionSnapshot(d),
+          event: {
+            type: 'complete_rejected',
+            status: screenCheck.status,
+            ...(screenCheck.expected_screen_hash !== undefined
+              ? { expected_screen_hash: screenCheck.expected_screen_hash }
+              : {}),
+            ...(screenCheck.actual_screen_hash !== undefined
+              ? { actual_screen_hash: screenCheck.actual_screen_hash }
+              : {}),
+            diagnostic: screenCheck.status === 'stale_screen'
+              ? 'The screen changed after Chief reviewed it. Review the fresh screen before completing.'
+              : 'The current screen could not be read. Keep the node running and retry supervision.',
+          },
+        });
+        completeResults.push({
+          ok: false, action: 'complete', node_id: node.id, task_id: node.task,
+          ...screenCheck,
+        });
+        continue;
+      }
+      updateNode(orch, workflowId, node.id, {
+        status: 'completed',
+        event: { type: 'completed', reason: d.reason || '' },
+        last_action: decisionSnapshot(d),
+      });
+      writeNodeState(orch, workflowId, node.id, { status: 'completed' });
+      completeResults.push({ ok: true, action: 'complete', node_id: node.id, task_id: node.task });
     }
 
     for (const d of classified.sends) {
@@ -655,6 +707,7 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
     decisions: durableDecisions,
     dispatch_results: dispatchResults,
     relaunch_results: relaunchResults,
+    complete_results: completeResults,
   });
 
   // Persist consumed batch_id to prevent replay.
@@ -672,6 +725,7 @@ export function processDecisionBatch(chiefOutput, nodeSurfaceMap, orch, workflow
     continuations: classified.continuations,
     relaunches: classified.relaunches,
     relaunchResults,
+    completeResults,
     dispatchResults,
   };
 }

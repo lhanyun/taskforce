@@ -76,7 +76,9 @@ not that the worker TUI acted on the input; verify the next screen.
 - **continue**: no terminal input
 - **send**: send exact text or one TUI key after matching `expected_screen_hash`
 - **relaunch**: replace an attempt only after its worker has already exited
-- **complete**: mark node completed after goal/implementation review
+- **complete**: mark node completed after goal/implementation review. Runtime
+  re-reads a live worker's screen and rejects a stale decision if it changed
+  after review. The worker is not stopped.
 
 Chief owns ordinary permission judgment and runtime recovery. For safe,
 project-scoped operations, use `send` directly. Ask the user only for product
