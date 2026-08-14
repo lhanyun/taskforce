@@ -67,4 +67,7 @@ adopted worker's screen — it is frequently waiting on a permission menu that
 went unanswered while its entry was unsupervised.
 Completion claims require goal and implementation review. Artifacts and process
 exit are evidence only and cannot terminate supervision without Chief's
-verified `complete` decision.
+verified `complete` decision. Runtime re-reads a live worker's screen before
+applying `complete`; if it changed after review, completion is rejected and the
+fresh screen returns for a new decision. The worker is left running so the
+terminal remains available to inspect.

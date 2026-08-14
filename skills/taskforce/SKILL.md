@@ -257,9 +257,14 @@ neither can strand a worker.
 
 CLI exit and worker completion claims are not proof. Before `complete`, compare
 goal and `done_when` with actual implementation, `result.json`,
-`validation.json`, and current screen. Invalid result states never complete a
-node automatically. The presence of an artifact or a stopped CLI must not end
-the review loop; only Chief's verified `complete` decision does.
+`validation.json`, and current screen. Runtime re-reads a live worker's screen
+before applying `complete`. If the screen changed after Chief reviewed it, the
+decision is rejected and the fresh screen returns for review; the node stays
+`running` and dependents do not launch. Runtime does not interpret the new
+screen or stop the worker, so the terminal remains available for tracing.
+Invalid result states never complete a node automatically. The presence of an
+artifact or a stopped CLI must not end the review loop; only Chief's verified
+`complete` decision does.
 
 ## Evidence
 

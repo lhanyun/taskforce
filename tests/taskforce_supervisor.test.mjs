@@ -276,6 +276,7 @@ test('every supervisor response tells Chief not to rush active Thinking or Write
   assert.match(output.chief_instruction, /Thinking, Write\/Edit execution/);
   assert.match(output.chief_instruction, /not reasons to send urgency, reminders, task restatements, or start-now prompts/);
   assert.match(output.chief_instruction, /visible input request, concrete goal or boundary drift/);
+  assert.match(output.chief_instruction, /Do not return complete while the CLI visibly waits for permission or confirmation/);
   assert.equal(output.review_required, true);
   assert.equal(output.workflow_terminal, false);
   assert.match(output.host_instruction, /immediately start the next --wait/);
@@ -1119,6 +1120,118 @@ test('a stale permission decision is a failed send, not a post-send confirmation
   assert.notEqual(followup.observations[0].review_reason, 'post_send_confirmation');
   assert.equal('send_effect' in followup.observations[0], false);
   assert.equal(fs.existsSync(log), false, 'stale permission decision must send no terminal input');
+});
+
+test('complete is rejected when a live screen changes after observation', async () => {
+  const { processDecisionBatch } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow, getReadyNodes } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const { hashScreen } = await import(path.join(SCRIPTS, 'surface_collector.mjs'));
+  const project = temp('tf-complete-stale-');
+  const orch = initWorkflow(project);
+  const workflowPath = path.join(orch, 'workflows', 'wf.json');
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  const run = path.join(orch, 'runs', 'wf', 'node-a', 'attempt-1');
+  fs.mkdirSync(run, { recursive: true });
+  fs.writeFileSync(path.join(run, 'agent.pid'), `${process.pid}\n`);
+  workflow.nodes[0].run_dir = run;
+  workflow.nodes.push({
+    id: 'node-b', task: 'task-a', cli: 'opencode', model: null, depends_on: ['node-a'],
+    status: 'pending', event: null, last_action: null, cmux_surface: '', run_dir: '', attempt_count: 0,
+  });
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+
+  const reviewedScreen = 'Review written. All requested checks passed.\n';
+  const currentScreen = 'Do you want to create validation.json?\n❯ 1. Yes\n  2. No\n';
+  const surfacesFile = path.join(project, 'surfaces.json');
+  fs.writeFileSync(surfacesFile, JSON.stringify({
+    'surface-a': { text: currentScreen },
+  }));
+  const oldBin = process.env.CMUX_BIN;
+  const oldSurfaces = process.env.FAKE_CMUX_SURFACES_FILE;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  process.env.FAKE_CMUX_SURFACES_FILE = surfacesFile;
+  let result;
+  try {
+    result = processDecisionBatch({
+      batch_id: 'obs-complete-stale',
+      workflow_id: 'wf',
+      decisions: [{
+        node_id: 'node-a',
+        action: 'complete',
+        reason: 'The reviewed screen and artifacts satisfy done_when',
+      }],
+    }, {}, orch, 'wf', [{
+      node_id: 'node-a',
+      screen_hash: hashScreen(reviewedScreen),
+      current_screen: reviewedScreen,
+    }]);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+    if (oldSurfaces === undefined) delete process.env.FAKE_CMUX_SURFACES_FILE;
+    else process.env.FAKE_CMUX_SURFACES_FILE = oldSurfaces;
+  }
+
+  assert.equal(result.completeResults[0].ok, false);
+  assert.equal(result.completeResults[0].status, 'stale_screen');
+  assert.equal(result.completeResults[0].expected_screen_hash, hashScreen(reviewedScreen));
+  assert.equal(result.completeResults[0].actual_screen_hash, hashScreen(`${currentScreen}\n`));
+  const node = loadWorkflow(orch, 'wf').nodes.find((candidate) => candidate.id === 'node-a');
+  assert.equal(node.status, 'running');
+  assert.equal(node.event.type, 'complete_rejected');
+  assert.equal(node.event.status, 'stale_screen');
+  assert.deepEqual(getReadyNodes(orch, 'wf').map((candidate) => candidate.id), []);
+});
+
+test('complete accepts an unchanged live screen and does not stop the worker', async () => {
+  const { processDecisionBatch } = await import(path.join(SCRIPTS, 'supervisor_loop.mjs'));
+  const { loadWorkflow } = await import(path.join(SCRIPTS, 'workflow_registry.mjs'));
+  const { processIsAlive } = await import(path.join(SCRIPTS, 'protocol_lib.mjs'));
+  const { hashScreen } = await import(path.join(SCRIPTS, 'surface_collector.mjs'));
+  const project = temp('tf-complete-idle-');
+  const orch = initWorkflow(project);
+  const run = path.join(orch, 'runs', 'wf', 'node-a', 'attempt-1');
+  fs.mkdirSync(run, { recursive: true });
+  fs.writeFileSync(path.join(run, 'agent.pid'), `${process.pid}\n`);
+  const workflowPath = path.join(orch, 'workflows', 'wf.json');
+  const workflow = JSON.parse(fs.readFileSync(workflowPath));
+  workflow.nodes[0].run_dir = run;
+  fs.writeFileSync(workflowPath, JSON.stringify(workflow));
+
+  const screen = 'Done. winter.html is created.\n\n> Open winter.html in browser to preview\n';
+  const surfacesFile = path.join(project, 'surfaces.json');
+  fs.writeFileSync(surfacesFile, JSON.stringify({
+    'surface-a': { text: screen.trimEnd() },
+  }));
+  const oldBin = process.env.CMUX_BIN;
+  const oldSurfaces = process.env.FAKE_CMUX_SURFACES_FILE;
+  process.env.CMUX_BIN = FAKE_CMUX;
+  process.env.FAKE_CMUX_SURFACES_FILE = surfacesFile;
+  let result;
+  try {
+    result = processDecisionBatch({
+      batch_id: 'obs-complete-idle',
+      workflow_id: 'wf',
+      decisions: [{
+        node_id: 'node-a',
+        action: 'complete',
+        reason: 'Goal and done_when are satisfied',
+      }],
+    }, {}, orch, 'wf', [{
+      node_id: 'node-a',
+      screen_hash: hashScreen(screen),
+      current_screen: screen,
+    }]);
+  } finally {
+    if (oldBin === undefined) delete process.env.CMUX_BIN; else process.env.CMUX_BIN = oldBin;
+    if (oldSurfaces === undefined) delete process.env.FAKE_CMUX_SURFACES_FILE;
+    else process.env.FAKE_CMUX_SURFACES_FILE = oldSurfaces;
+  }
+
+  assert.equal(result.completeResults[0].ok, true);
+  const node = loadWorkflow(orch, 'wf').nodes[0];
+  assert.equal(node.status, 'completed');
+  assert.equal(fs.readFileSync(path.join(run, 'agent.pid'), 'utf8').trim(), String(process.pid));
+  assert.equal(processIsAlive(process.pid), true);
 });
 
 test('a visible permission menu cannot be bypassed by relaunching its live worker', async () => {
